@@ -30,7 +30,7 @@ credit-default-predictor/
 
 ---
 
-# Machine Learning Pipeline
+## Machine Learning Pipeline
 
 The complete modelling workflow is contained in `main.ipynb`.
 
@@ -155,7 +155,7 @@ Positive contributions increase the model's estimated default risk, while negati
 
 ---
 
-# API
+## API
 
 The backend is built using **FastAPI** and **Pydantic**.
 
@@ -202,7 +202,7 @@ http://127.0.0.1:8000/docs
 
 ---
 
-# Streamlit UI
+## Streamlit UI
 
 The frontend is built with **Streamlit**.
 
@@ -233,7 +233,7 @@ http://localhost:8501
 
 ---
 
-# Running the Full Stack
+## Running the Full Stack
 
 ### Terminal 1 — FastAPI
 
@@ -255,7 +255,7 @@ http://localhost:8501
 
 ---
 
-# Key Concepts
+## Key Concepts
 
 | Concept          | Where Used          | Purpose                                          |
 | ---------------- | ------------------- | ------------------------------------------------ |
@@ -271,10 +271,9 @@ http://localhost:8501
 
 ---
 
-# Results
+## Results
 
 Using the current pipeline, the model achieves approximately:
-
 **ROC-AUC: 0.93–0.95 across walk-forward validation folds**
 
 The strongest predictive features include:
@@ -289,7 +288,7 @@ Performance should be interpreted alongside the individual fold results and the 
 
 ---
 
-# Tech Stack
+## Tech Stack
 
 * **Python**
 * **Pandas / NumPy** — data processing
@@ -302,7 +301,7 @@ Performance should be interpreted alongside the individual fold results and the 
 
 ---
 
-# Disclaimer
+## Disclaimer
 
 This project is intended for **educational and demonstration purposes**.
 

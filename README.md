@@ -155,6 +155,15 @@ Positive contributions increase the model's estimated default risk, while negati
 
 ---
 
+## Live Deployment
+
+* **Streamlit application:** [credit-default-predictor-raajitt.streamlit.app](https://credit-default-predictor-raajitt.streamlit.app/)
+* **FastAPI backend:** [credit-default-predictor.up.railway.app](https://credit-default-predictor.up.railway.app)
+
+The Streamlit application uses the Railway-hosted FastAPI service for predictions.
+
+---
+
 ## API
 
 The backend is built using **FastAPI** and **Pydantic**.

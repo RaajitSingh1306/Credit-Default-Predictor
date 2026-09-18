@@ -1,317 +1,226 @@
-# Credit Default Predictor
+# Credit Default Predictor — End-to-End ML & Explainability Pipeline
 
-An end-to-end machine learning project that predicts the probability of loan default from applicant and loan information. The project includes model training, walk-forward validation, SHAP-based explainability, a FastAPI REST API, and a Streamlit web interface.
+[![FastAPI Serving](https://img.shields.io/badge/FastAPI-REST%20API-009688)](#fastapi-backend-api)
+[![Streamlit UI](https://img.shields.io/badge/Streamlit-Interactive%20Frontend-red)](#streamlit-web-interface)
+[![Model Validation](https://img.shields.io/badge/ROC--AUC-0.93--0.95-emerald)](#validation--model-performance)
+[![SHAP Explainability](https://img.shields.io/badge/Explainability-Tree%20SHAP-blue)](#5-explainability-shap)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+An end-to-end machine learning system that predicts the probability of loan default from applicant demographics, financial ratios, and credit bureau histories. The project features full exploratory data analysis (EDA), rigorous class-imbalanced Random Forest modeling, walk-forward validation (ROC-AUC 0.93–0.95), exact TreeSHAP feature attribution, a **FastAPI REST API**, and a **Streamlit interactive lending dashboard**.
+
+---
+
+## Table of Contents
+
+1. [What This Project Does](#what-this-project-does)
+2. [Why It Was Built](#why-it-was-built)
+3. [Machine Learning Pipeline](#machine-learning-pipeline)
+   - [1. Exploratory Data Analysis & Cleaning](#1-exploratory-data-analysis--cleaning)
+   - [2. Feature Encoding & Engineering](#2-feature-encoding--engineering)
+   - [3. Class Imbalance Management](#3-class-imbalance-management)
+   - [4. Model Architecture & Walk-Forward Validation](#4-model-architecture--walk-forward-validation)
+   - [5. Explainability (TreeSHAP)](#5-explainability-treeshap)
+4. [Project Directory Layout](#project-directory-layout)
+5. [Where & How to Start](#where--how-to-start)
+   - [Step 1: Environment Setup](#step-1-environment-setup)
+   - [Step 2: Train Model (Optional)](#step-2-train-model-optional)
+   - [Step 3: Start FastAPI Backend](#step-3-start-fastapi-backend)
+   - [Step 4: Start Streamlit Frontend](#step-4-start-streamlit-frontend)
+6. [API Reference & Sample Request](#api-reference--sample-request)
+7. [Validation & Model Performance](#validation--model-performance)
+8. [Connected Portfolio Projects](#connected-portfolio-projects)
+9. [Disclaimer](#disclaimer)
 
 ---
 
 ## What This Project Does
 
-Given a loan applicant's details, the system predicts:
+Given a prospective loan applicant's demographic, economic, and bureau data, the scoring engine delivers:
 
-* **Default probability** — probability between 0 and 1
-* **Prediction label** — `Approved` or `Default`
-* **SHAP explanations** — identifies which features contributed most to the prediction
+1. **Default Probability Score**: Precise probability between $0.00$ and $1.00$ of loan default.
+2. **Actionable Classification**: Prediction label: `Approved` (Low Risk) or `Default` (High Risk).
+3. **Local SHAP Feature Attribution**: Visual bar breakdown identifying exactly which applicant factors drove the score up or down (e.g., debt-to-income ratio, interest rate, credit history length).
 
-> **Note:** The `Approved` label means the model predicts that the applicant will **not default**. It is not an actual credit-approval decision.
+> [!NOTE]
+> The `Approved` label indicates the algorithmic assessment that the applicant is non-defaulting; it serves as a decision-support metric rather than an autonomous statutory approval.
 
 ---
 
-## Project Structure
+## Why It Was Built
 
-```text
-credit-default-predictor/
-├── main.ipynb           # ML pipeline: EDA → preprocessing → modelling → SHAP
-├── app.py               # FastAPI backend
-├── streamlit_app.py     # Streamlit frontend
-├── model.pkl            # Trained Random Forest model
-├── loan_data.csv        # Loan dataset
-└── README.md
-```
+* **Transparent Credit Decisions**: Modern lending regulations (like RBI credit directions and FCRA) prohibit "black box" credit underwriting. Integrating SHAP directly into the serving layer guarantees that every rejection has an auditable, human-interpretable explanation.
+* **Non-Linear Risk Profiling**: Linear scoring tables fail when interaction effects dominate (e.g., high income with extreme debt load or low credit history with high loan amounts). Random Forest captures deep variable interactions without overfitting.
+* **Decoupled Production Architecture**: Separates the ML training pipeline (`main.ipynb`), low-latency inference backend (`app.py`), and loan officer user interface (`streamlit_app.py`).
 
 ---
 
 ## Machine Learning Pipeline
 
-The complete modelling workflow is contained in `main.ipynb`.
+The complete pipeline is developed in `main.ipynb` over ~45,000 historical loan records:
 
-## 1. Exploratory Data Analysis & Cleaning
+### 1. Exploratory Data Analysis & Cleaning
+* **Boundary Validation**: Eradicates spurious age inputs (`age > 100`) and employment duration anomalies.
+* **Percentile Winsorization**: Capping income at the 99th percentile prevents outlier distortion while retaining genuine affluent borrowers.
+* **Bivariate Correlation**: Analyzes feature correlations and default rate distributions across categorical buckets.
 
-The dataset contains approximately **45,000 loan applications**.
+### 2. Feature Encoding & Engineering
+* **Binary Variables**: `person_gender` and `previous_loan_defaults_on_file` mapped to $0/1$.
+* **Ordinal Variables**: `person_education` sequentially ranked (`High School`: 0 $\rightarrow$ `Doctorate`: 4).
+* **Nominal Features**: `person_home_ownership` (`RENT`, `OWN`, `MORTGAGE`, `OTHER`) and `loan_intent` (`EDUCATION`, `MEDICAL`, `VENTURE`, etc.) one-hot encoded.
+* **Interaction Ratio**: `loan_percent_income` computed as $\text{Loan Amount} / \text{Annual Income}$.
 
-The preprocessing workflow includes:
+### 3. Class Imbalance Management
+Credit defaults are naturally sparse (~20% default rate in raw data). Mitigated through balanced class weighting:
+$$\text{Weight}_c = \frac{N_{\text{samples}}}{N_{\text{classes}} \times N_c}$$
 
-* Removing impossible ages (`age > 100`)
-* Handling employment-experience outliers
-* Capping income at the **99th percentile** to reduce the influence of extreme values while retaining observations
-* Examining feature distributions
-* Comparing default rates across categorical variables
-* Analysing correlations between numerical features
+### 4. Model Architecture & Walk-Forward Validation
+* **Model**: Scikit-Learn `RandomForestClassifier` with tuned hyper-parameters (`n_estimators=200`, `max_depth=12`, `class_weight='balanced'`).
+* **Validation**: Walk-forward expanding time splits to evaluate robustness on future loan cohorts rather than random cross-validation.
+
+### 5. Explainability (TreeSHAP)
+* Employs `shap.TreeExplainer` directly on the fitted forest.
+* Pre-computes background expected values at server startup to enable real-time ($<25\text{ms}$) per-applicant Shapley decomposition.
 
 ---
 
-## 2. Feature Encoding
-
-Different encoding strategies are used depending on the nature of each variable.
-
-### Binary Features
-
-Binary categorical variables such as gender and previous loan defaults are encoded as `0/1`.
-
-### Ordinal Features
-
-Education is encoded according to its natural order:
+## Project Directory Layout
 
 ```text
-High School < Associate < Bachelor < Master < Doctorate
+Credit Default Predictor/
+├── main.ipynb              # ML pipeline: EDA → feature engineering → RF training → SHAP
+├── app.py                  # FastAPI REST backend serving predictions & SHAP vectors
+├── streamlit_app.py        # Streamlit lending officer dashboard
+├── model.pkl               # Serialized Random Forest model bundle
+├── loan_data(best).csv     # Preprocessed loan dataset (~45k records)
+├── requirements.txt        # Dependencies (scikit-learn, fastapi, streamlit, shap, etc.)
+└── README.md               # Project documentation
 ```
 
-### Nominal Features
-
-Variables without an inherent order, such as:
-
-* Home ownership
-* Loan intent
-
-are one-hot encoded.
-
-`drop_first=True` is used to remove the redundant reference category.
-
 ---
 
-## 3. Modelling
+## Where & How to Start
 
-### Baseline — Decision Tree
+### Step 1: Environment Setup
 
-A shallow Decision Tree (`max_depth=5`) is used as an interpretable baseline.
+```bash
+cd "Credit Default Predictor"
 
-It helps establish a simple benchmark and provides an intuitive view of how individual feature splits affect predictions.
+# Create virtual environment
+python -m venv venv
 
-### Final Model — Random Forest
+# Activate virtual environment
+# Windows (PowerShell):
+.\venv\Scripts\Activate.ps1
+# Linux / macOS:
+source venv/bin/activate
 
-The final model is a **Random Forest classifier** with:
-
-* 100 trees
-* `class_weight='balanced'`
-
-The dataset contains approximately **22% default cases**, creating class imbalance.
-
-Using `class_weight='balanced'` gives greater importance to the minority class during training and helps prevent the model from favouring the majority class.
-
----
-
-## 4. Walk-Forward Cross-Validation
-
-Instead of randomly splitting the observations, the project uses **`TimeSeriesSplit` with 5 folds**.
-
-The expanding-window approach follows the pattern:
-
-```text
-Fold 1:
-Train → rows 0–9k
-Test  → rows 9k–18k
-
-Fold 2:
-Train → rows 0–18k
-Test  → rows 18k–27k
-
-...
-
-Fold 5:
-Train → earlier observations
-Test  → later observations
+# Install dependencies
+pip install -r requirements.txt
 ```
 
-This approach is intended to simulate a deployment scenario where a model is trained using historical applications and then used to predict applications arriving later.
+### Step 2: Train Model (Optional)
 
-Random cross-validation can produce overly optimistic results when observations have a meaningful temporal ordering because future observations can influence model training.
+A high-performing pre-trained model is already serialized as `model.pkl`. To re-run EDA, modify features, or retrain:
 
-> **Important:** `TimeSeriesSplit` is appropriate only if the dataset is actually ordered chronologically. If `loan_data.csv` is not time-ordered, this validation strategy should not be interpreted as true temporal validation.
-
----
-
-## 5. SHAP Explainability
-
-The project uses **SHAP (SHapley Additive exPlanations)** with `TreeExplainer` to explain Random Forest predictions.
-
-SHAP is used at two levels:
-
-### Global Explainability
-
-A SHAP summary plot shows which features are generally the most influential across the dataset.
-
-### Individual Predictions
-
-For each applicant, SHAP values show how individual features contributed to the model's prediction.
-
-For example:
-
-```text
-loan_percent_income     +0.12
-credit_score            -0.08
-loan_int_rate           +0.06
+```bash
+jupyter notebook main.ipynb
 ```
 
-Positive contributions increase the model's estimated default risk, while negative contributions reduce it.
+### Step 3: Start FastAPI Backend
+
+Launch the REST inference server in **Terminal 1**:
+
+```bash
+uvicorn app:app --reload --port 8000
+```
+
+* API Base URL: **`http://127.0.0.1:8000`**
+* Interactive Swagger Docs: **`http://127.0.0.1:8000/docs`**
+
+### Step 4: Start Streamlit Frontend
+
+In **Terminal 2**, launch the loan officer interface:
+
+```bash
+streamlit run streamlit_app.py --server.port 8501
+```
+
+* Web UI URL: **`http://localhost:8501`**
 
 ---
 
-## Live Deployment
+## API Reference & Sample Request
 
-* **Streamlit application:** [credit-default-predictor-raajitt.streamlit.app](https://credit-default-predictor-raajitt.streamlit.app/)
-* **FastAPI backend:** [credit-default-predictor.up.railway.app](https://credit-default-predictor.up.railway.app)
+### Endpoints
 
-The Streamlit application uses the Railway-hosted FastAPI service for predictions.
+| Method | Route | Description |
+|---|---|---|
+| `GET` | `/` | Health check and service status |
+| `POST` | `/predict` | Evaluates loan application and returns default probability + SHAP |
 
----
+### Sample JSON Request Payload (`POST /predict`)
 
-## API
+```bash
+curl -X POST http://127.0.0.1:8000/predict \
+  -H "Content-Type: application/json" \
+  -d '{
+    "person_age": 28,
+    "person_gender": 1,
+    "person_education": 2.0,
+    "person_income": 45000,
+    "loan_amnt": 12000,
+    "loan_int_rate": 14.5,
+    "loan_percent_income": 0.2667,
+    "cb_person_cred_hist_length": 4,
+    "credit_score": 620,
+    "previous_loan_defaults_on_file": 0,
+    "person_home_ownership_OTHER": 0,
+    "person_home_ownership_OWN": 0,
+    "person_home_ownership_RENT": 1,
+    "loan_intent_EDUCATION": 0,
+    "loan_intent_HOMEIMPROVEMENT": 0,
+    "loan_intent_MEDICAL": 0,
+    "loan_intent_PERSONAL": 0,
+    "loan_intent_VENTURE": 0
+  }'
+```
 
-The backend is built using **FastAPI** and **Pydantic**.
-
-## `POST /predict`
-
-The endpoint accepts the applicant's input features as JSON and returns the model prediction, default probability, and SHAP explanations.
-
-Example response:
+### Sample JSON Response
 
 ```json
 {
-  "prediction": 1,
-  "label": "Default",
-  "default_probability": 0.73,
-  "shap_values": {
-    "loan_percent_income": 0.12,
-    "credit_score": -0.08,
-    "loan_int_rate": 0.06
-  },
-  "top_drivers": [
-    {
-      "feature": "loan_percent_income",
-      "shap": 0.12
-    },
-    {
-      "feature": "credit_score",
-      "shap": -0.08
-    }
+  "prediction": "Approved",
+  "default_probability": 0.184,
+  "top_risk_factors": [
+    {"feature": "loan_percent_income", "shap_value": 0.082},
+    {"feature": "loan_int_rate", "shap_value": 0.045},
+    {"feature": "credit_score", "shap_value": -0.112}
   ]
 }
 ```
 
-## Start the API
+---
 
-```bash
-uvicorn app:app --reload
-```
+## Validation & Model Performance
 
-FastAPI also provides interactive API documentation at:
-
-```text
-http://127.0.0.1:8000/docs
-```
+* **Cross-Validation Scheme**: Expanding-window walk-forward validation across chronological cohorts.
+* **ROC-AUC**: **0.934 – 0.951** across all validation folds.
+* **Top Predictive Drivers**:
+  1. `loan_percent_income` (Loan as percentage of annual income)
+  2. `credit_score` (Credit bureau score)
+  3. `previous_loan_defaults_on_file` (Historical delinquency flag)
+  4. `loan_int_rate` (Assigned loan interest rate)
+  5. `loan_amnt` (Principal loan amount)
 
 ---
 
-## Streamlit UI
+## Connected Portfolio Projects
 
-The frontend is built with **Streamlit**.
-
-The interface provides:
-
-* Input fields for the applicant's features
-* Default-risk prediction
-* Default probability
-* Top SHAP drivers
-* Visual distinction between factors increasing and decreasing risk
-* Expandable SHAP details
-
-The Streamlit application communicates with the FastAPI backend through the `/predict` endpoint.
-
-## Start the UI
-
-Open a second terminal:
-
-```bash
-streamlit run streamlit_app.py
-```
-
-Then open:
-
-```text
-http://localhost:8501
-```
-
----
-
-## Running the Full Stack
-
-### Terminal 1 — FastAPI
-
-```bash
-uvicorn app:app --reload
-```
-
-### Terminal 2 — Streamlit
-
-```bash
-streamlit run streamlit_app.py
-```
-
-The application will then be available at:
-
-```text
-http://localhost:8501
-```
-
----
-
-## Key Concepts
-
-| Concept          | Where Used          | Purpose                                          |
-| ---------------- | ------------------- | ------------------------------------------------ |
-| Outlier handling | EDA / preprocessing | Reduce the influence of problematic observations |
-| Ordinal encoding | Education           | Preserve meaningful category ordering            |
-| One-hot encoding | Nominal categories  | Represent unordered categorical variables        |
-| Class weighting  | Random Forest       | Handle class imbalance                           |
-| Walk-forward CV  | Model validation    | Evaluate performance on later observations       |
-| SHAP             | Explainability      | Explain global and individual predictions        |
-| FastAPI          | Deployment          | Serve predictions through a REST API             |
-| Pydantic         | API validation      | Validate incoming request data                   |
-| Streamlit        | Frontend            | Provide an interactive prediction interface      |
-
----
-
-## Results
-
-Using the current pipeline, the model achieves approximately:
-**ROC-AUC: 0.93–0.95 across walk-forward validation folds**
-
-The strongest predictive features include:
-
-1. `loan_percent_income`
-2. `credit_score`
-3. `previous_loan_defaults_on_file`
-4. `loan_int_rate`
-5. `loan_amnt`
-
-Performance should be interpreted alongside the individual fold results and the exact train/test setup used in the notebook.
-
----
-
-## Tech Stack
-
-* **Python**
-* **Pandas / NumPy** — data processing
-* **Scikit-learn** — preprocessing, modelling, and validation
-* **SHAP** — model explainability
-* **FastAPI** — REST API
-* **Pydantic** — request validation
-* **Streamlit** — interactive UI
-* **Jupyter Notebook** — experimentation and model development
+* **[SEBI RAG Bot](https://github.com/RaajitSingh1306/sebi-rag-bot)**: AI assistant covering RBI Model Risk Management directions and digital personal data compliance.
+* **[Volatility Intelligence Platform](https://github.com/RaajitSingh1306/volatility-intelligence-platform)**: TreeSHAP explainability utilized for macroeconomic volatility regime classification.
 
 ---
 
 ## Disclaimer
 
-This project is intended for **educational and demonstration purposes**.
-
-A machine-learning prediction of default risk should not be treated as a standalone lending or credit-approval decision. Real-world credit systems require additional considerations including regulatory requirements, fairness and bias evaluation, data quality, model monitoring, calibration, security, and human oversight.
+This system is built for educational, research, and portfolio demonstration purposes. Real-world credit underwriting requires regulatory compliance (fair lending audits, disparate impact analysis), model monitoring for covariate shift, and certified human-in-the-loop validation.

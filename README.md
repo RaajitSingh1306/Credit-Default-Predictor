@@ -54,6 +54,28 @@ Given a prospective loan applicant's demographic, economic, and bureau data, the
 
 ---
 
+## Architecture
+
+```
+main.ipynb (Training Pipeline)
+    │
+    ├── EDA & Boundary Cleaning (age bounds, income winsorization)
+    ├── Feature Encoding (binary indicators, ordinal, one-hot)
+    ├── Class Balancing (balanced sample weights)
+    ├── Walk-Forward RF Training (n_estimators=200, max_depth=12)
+    └── TreeSHAP Explainer Setup → models/model.pkl
+         │
+    ┌────┴──────────────────────────┐
+    ▼                               ▼
+app.py (FastAPI Backend)        streamlit_app.py (Loan Officer UI)
+Port :8000                      Port :8501
+- Pydantic schema validation    - Interactive parameter inputs
+- Sub-25ms inference            - Score gauges & risk flags
+- Exact TreeSHAP local values   - Live TreeSHAP contribution waterfall
+```
+
+---
+
 ## Machine Learning Pipeline
 
 The complete pipeline is developed in `main.ipynb` over ~45,000 historical loan records:
@@ -214,10 +236,37 @@ curl -X POST http://127.0.0.1:8000/predict \
 
 ---
 
+## Key Design Decisions
+
+- **Random Forest over Gradient Boosting**: Random Forest with `class_weight='balanced'` handles imbalanced credit defaults robustly without requiring synthetic sampling (SMOTE) or aggressive focal loss tuning, while providing monotonic tree ensembles favored by regulatory credit risk auditors.
+- **Expanding-Window Walk-Forward Validation over K-Fold**: Loan defaults are chronologically clustered; standard random k-fold cross-validation leaks forward-looking macro conditions into historical folds, producing artificially inflated ROC-AUC.
+- **TreeSHAP over KernelSHAP**: Exact polynomial-time Shapley computation for tree ensembles via TreeSHAP allows real-time local attribution (<25ms per applicant) directly inside the API request-response cycle.
+- **Pre-Computed SHAP Background at Startup**: `app.py` loads `model.pkl` and initializes the TreeSHAP explainer once at server startup, avoiding per-request background re-sampling overhead.
+- **Decoupled Stateless Architecture**: `main.ipynb` performs heavy analytical exploration and model persistence; `app.py` remains a lightweight stateless microservice; `streamlit_app.py` serves as the loan officer frontend.
+
+---
+
 ## Connected Portfolio Projects
 
 * **[SEBI RAG Bot](https://github.com/RaajitSingh1306/sebi-rag-bot)**: AI assistant covering RBI Model Risk Management directions and digital personal data compliance.
 * **[Volatility Intelligence Platform](https://github.com/RaajitSingh1306/volatility-intelligence-platform)**: TreeSHAP explainability utilized for macroeconomic volatility regime classification.
+
+---
+
+## Limitations & Roadmap
+
+### Known Limitations
+- **Static Ingestion**: The training dataset (`loan_data(best).csv`, ~45,000 observations) represents a historical static cohort with no real-time loan origination system (LOS) streaming feed.
+- **Absence of Fair Lending / Disparate Impact Audit**: Does not implement formal algorithmic fairness audits (demographic parity, equalized odds) across protected demographic classes.
+- **Self-Reported Income**: Relies on self-reported `person_income` without automated payroll/tax bank verification APIs.
+- **Single Model Family**: Production serving utilizes Random Forest only; no multi-model dynamic routing or stacking with LightGBM/CatBoost.
+- **No Population Stability Monitoring**: Lacks automated tracking for Population Stability Index (PSI) or Characteristic Stability Index (CSI) to detect post-deployment credit score drift.
+
+### Roadmap
+- [ ] **Multi-Model Benchmark Suite**: Add automated hyperparameter tuning and benchmarking against LightGBM, CatBoost, and TabNet.
+- [ ] **Fairness & Bias Audit Engine**: Implement AIF360 / Fairlearn metrics to guarantee regulatory compliance with Fair Lending standards.
+- [ ] **Drift & PSI Monitoring**: Implement an automated monitoring dashboard for feature distribution shifts and Population Stability Index.
+- [ ] **Live Open Banking Ingestion**: Integrate Account Aggregator (AA) sandbox APIs for automated bank statement analysis.
 
 ---
 

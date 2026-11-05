@@ -1,12 +1,14 @@
-# Credit Default Predictor — End-to-End ML & Explainability Pipeline
+# Credit Default Predictor — End-to-End ML, Leakage Stress-Testing & TreeSHAP Pipeline
 
 [![FastAPI Serving](https://img.shields.io/badge/FastAPI-REST%20API-009688)](#11-api-reference--sample-request)
 [![Streamlit UI](https://img.shields.io/badge/Streamlit-Interactive%20Frontend-red)](#step-4-start-streamlit-frontend)
-[![Model Validation](https://img.shields.io/badge/ROC--AUC-0.93--0.95-emerald)](#8-results--evaluation)
-[![SHAP Explainability](https://img.shields.io/badge/Explainability-Tree%20SHAP-blue)](#6-step-by-step-pipeline)
+[![Model Validation](https://img.shields.io/badge/ROC--AUC-0.975%20(RF)%20%7C%200.943%20(DT)-emerald)](#8-results--evaluation)
+[![Ablation Audit](https://img.shields.io/badge/Ablation%20Audit-Ablated%200.870%20AUC-purple)](#83-feature-ablation--leakage-stress-testing-dropping-columns)
+[![Cross-Validation](https://img.shields.io/badge/5--Fold%20CV-0.967%20%C2%B1%200.007-blue)](#84-expanding-window-cross-validation--row-order-anomaly-timeseriessplit)
+[![SHAP Explainability](https://img.shields.io/badge/Explainability-TreeSHAP%20Local%20%26%20Global-orange)](#85-global-feature-importance-tree-gini-vs-treeshap)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](#16-license--disclaimer)
 
-An end-to-end machine learning system that predicts the probability of loan default from applicant demographics, financial ratios, and credit bureau histories. The project features exploratory data analysis (EDA), class-imbalanced Random Forest modeling, expanding-window walk-forward validation (ROC-AUC 0.93–0.95), exact TreeSHAP local feature attribution, a **FastAPI REST API**, and a **Streamlit interactive lending dashboard**.
+An end-to-end machine learning underwriting and credit risk assessment pipeline built on consumer lending data (`loan_data(best).csv`). The system features automated data hygiene and 99th-percentile income winsorization, empirical exploratory data analysis (EDA), multicollinearity resolution ($r = 0.95$ age/experience redundancy), depth-constrained Decision Tree benchmarking, class-balanced Random Forest modeling, a systematic **feature ablation & leakage stress-testing audit**, expanding-window sequential cross-validation exposing a persistent row-order anomaly, exact TreeSHAP feature attribution, a high-throughput **FastAPI REST backend**, and an interactive **Streamlit loan officer console**.
 
 ---
 
@@ -20,6 +22,11 @@ An end-to-end machine learning system that predicts the probability of loan defa
 - [6. Step-by-Step Pipeline](#6-step-by-step-pipeline)
 - [7. Problems Faced & How We Solved Them](#7-problems-faced--how-we-solved-them)
 - [8. Results & Evaluation](#8-results--evaluation)
+  - [8.1 Baseline Model Performance Comparison](#81-baseline-model-performance-comparison)
+  - [8.2 Confusion Matrix Diagnostics & Cost Asymmetry](#82-confusion-matrix-diagnostics--cost-asymmetry)
+  - [8.3 Feature Ablation & Leakage Stress-Testing (Dropping Columns)](#83-feature-ablation--leakage-stress-testing-dropping-columns)
+  - [8.4 Expanding-Window Cross-Validation & Row-Order Anomaly (TimeSeriesSplit)](#84-expanding-window-cross-validation--row-order-anomaly-timeseriessplit)
+  - [8.5 Global Feature Importance: Tree Gini vs. TreeSHAP](#85-global-feature-importance-tree-gini-vs-treeshap)
 - [9. Project Structure](#9-project-structure)
 - [10. Getting Started](#10-getting-started)
 - [11. API Reference & Sample Request](#11-api-reference--sample-request)
@@ -33,24 +40,25 @@ An end-to-end machine learning system that predicts the probability of loan defa
 
 ## 1. What This Project Does
 
-Given a prospective loan applicant's demographic, economic, and credit bureau data, the scoring engine delivers:
+Given an applicant's demographic profile, financial indicators, and historical credit bureau records, the scoring engine delivers:
 
-- **Default Probability Score**: Calibrated probability between `0.00` and `1.00` estimating loan default risk.
-- **Actionable Decision Classification**: Binary prediction label: `Approved` (Low Risk) or `Default` (High Risk) calibrated against underwriting loss tolerances.
-- **Local SHAP Feature Attribution**: Sub-25ms Shapley decomposition detailing exactly which applicant attributes drove the score up or down (e.g., debt-to-income ratio, interest rate, credit history length).
-- **Interactive Loan Officer Interface**: Visual Streamlit dashboard with risk gauges, applicant parameter sliders, and waterfall attribution charts.
-- **Production REST API**: High-throughput FastAPI endpoints validated with Pydantic schemas.
-
-> [!NOTE]
-> The `Approved` label indicates the algorithmic assessment that the applicant is non-defaulting; it serves as decision-support guidance for underwriting teams rather than an autonomous statutory approval.
+- **Calibrated Default Probability**: Continuous probability score $[0.00, 1.00]$ assessing the likelihood of loan delinquency.
+- **Underwriting Classification**: Binary decision tag (`Approved` vs. `Default`) calibrated with class-frequency reweighting to counter severe portfolio imbalance.
+- **Overfitting Diagnostics**: Explicit comparison between unconstrained decision trees (100% train accuracy / 89.4% test accuracy) and regularized models (90.9% train / 90.9% test for depth-constrained trees; 93.0% test accuracy and 0.975 ROC-AUC for Random Forests).
+- **Leakage & Feature Ablation Matrix**: Systematic stress-testing that evaluates model degradation when dominant circular signals (`loan_int_rate`, `previous_loan_defaults_on_file`, and both) are stripped, establishing a rock-solid **0.870 ROC-AUC baseline** on pure borrower economic fundamentals alone.
+- **Exact Local TreeSHAP Attributions**: Real-time Shapley value decomposition per applicant, quantifying exactly how each feature (e.g., debt burden, interest rate, homeownership) shifted the log-odds of default.
+- **Sequential Stability & Row-Order Anomaly Audit**: 5-fold expanding-window cross-validation evaluating sequential drift ($0.967 \pm 0.007$ AUC) and exposing an anomaly where Fold 5 consistently peaks across all feature subsets (up to 0.980 AUC).
+- **Dual Serving Architecture**: Decoupled, stateless REST API via FastAPI (`app.py`) and an interactive underwriting dashboard via Streamlit (`streamlit_app.py`).
 
 ---
 
 ## 2. Why It Was Built
 
-- **Transparent Credit Decisions & Regulatory Compliance**: Modern lending regulations (such as RBI Master Directions on Credit Risk and US FCRA/ECOA) strictly prohibit uninterpretable "black box" credit underwriting. Integrating TreeSHAP directly into the serving layer guarantees that every rejection has an auditable, human-interpretable adverse action explanation.
-- **Non-Linear Risk Profiling**: Traditional linear scorecards fail when strong interaction effects dominate (e.g., high income paired with extreme debt load, or low credit history paired with large loan amounts). Random Forest captures deep feature interactions without overfitting.
-- **Decoupled Production Architecture**: Separates exploratory training and model persistence (`main.ipynb`), low-latency stateless REST inference (`app.py`), and loan officer client UI (`streamlit_app.py`) for enterprise modularity.
+- **Eliminating "Black-Box" Lending Barriers**: Commercial credit regulations (including RBI Master Directions on Digital Lending and US Equal Credit Opportunity Act / FCRA) require auditable adverse action reasons when denying credit. Integrating TreeSHAP into the serving layer guarantees that every rejection produces human-interpretable risk drivers.
+- **Addressing Severe Asymmetric Risk**: In credit underwriting, a false negative (approving a borrower who defaults) results in severe capital loss, whereas a false positive (rejecting a solvent borrower) only forfeits marginal interest spread. Standard unweighted models optimize for overall accuracy by ignoring defaults; our pipeline introduces cost-sensitive balanced weighting ($W_c = N / [K \cdot N_c]$) to elevate default recall to 76%.
+- **Stress-Testing Against Risk-Based Pricing Leakage**: In real-world banking origination, loan interest rates (`loan_int_rate`) are assigned *after* risk committees review the applicant. Using interest rates to predict default can act as a circular label proxy (reverse causality). Our feature ablation audit proves that even when interest rates and prior defaults are completely stripped, the model retains an impressive **0.870 ROC-AUC** based solely on applicant fundamentals (debt-to-income, income, homeownership, and credit score).
+- **Robust Feature Hygiene over Arbitrary Row Deletion**: Rather than discarding hundreds of high-income applicants due to extreme skew, we implemented upper-bound 99th percentile winsorization ($271,269), preserving applicant credit histories while controlling tree split variance.
+- **Empirical Detection of Collinearity & Redundancy**: Pinpoints near-perfect collinearity between chronological age and work experience ($r = 0.95$), systematically pruning redundant parameters to prevent split dilution and model degradation.
 
 ---
 
@@ -58,35 +66,53 @@ Given a prospective loan applicant's demographic, economic, and credit bureau da
 
 ```text
 ┌────────────────────────────────────────────────────────────────────────┐
-│                        DATA & OFFLINE TRAINING                         │
+│                        DATA INGESTION & HYGIENE                        │
 │                                                                        │
-│   loan_data(best).csv (~45K records, 20+ features)                     │
-│         │                                                              │
-│         ▼                                                              │
-│   main.ipynb Pipeline:                                                 │
-│     ├── Boundary Cleaning (age bounds, income winsorization)           │
-│     ├── 3-Tier Feature Encoding (binary, ordinal, one-hot)             │
-│     ├── Class Weight Balancing: W_c = N / (K * N_c)                    │
-│     ├── Expanding-Window Walk-Forward Validation                       │
-│     ├── Tuned RandomForestClassifier (n_estimators=200, depth=12)      │
-│     └── Serialization ───────────────────────────────┐                  │
-└──────────────────────────────────────────────────────┼─────────────────┘
-                                                       │
-                                                       ▼
-                                                 models/model.pkl
-                                                       │
-                     ┌─────────────────────────────────┴──────────────────────────────┐
-                     ▼                                                                ▼
-┌──────────────────────────────────────────────┐   ┌──────────────────────────────────────────────┐
-│            FASTAPI REST BACKEND              │   │             STREAMLIT FRONTEND               │
-│                   (app.py)                   │   │              (streamlit_app.py)              │
-│                  Port :8000                  │   │                  Port :8501                  │
-│                                              │   │                                              │
-│  - Pydantic schema validation                │   │  - Interactive applicant parameter sliders   │
-│  - Loads model & precomputes TreeSHAP        │   │  - Risk level gauges & decision badges       │
-│  - Sub-25ms inference per applicant          │   │  - Live local TreeSHAP contribution chart    │
-│  - Returns probability + top risk drivers    │   │  - Direct HTTP connection to FastAPI backend │
-└──────────────────────────────────────────────┘   └──────────────────────────────────────────────┘
+│   Raw Data: loan_data(best).csv (45,000 applications, 14 columns)      │
+│   ├── Outlier Purge: 10 impossible records (age > 100, exp > 60)       │
+│   ├── Income Capping: Winsorize at 99th percentile ($271,269) via clip │
+│   ├── Collinearity Pruning: Drop person_emp_exp (r = 0.95 with age)   │
+│   └── Cleaned Matrix: 44,990 valid rows, 22.2% baseline default rate   │
+└───────────────────────────────────┬────────────────────────────────────┘
+                                    │
+                                    ▼
+┌────────────────────────────────────────────────────────────────────────┐
+│                   FEATURE ENCODING & PARTITIONING                      │
+│                                                                        │
+│   ├── Binary Label Encoding: person_gender, previous_defaults          │
+│   ├── Ordinal Encoding: person_education (High School -> Doctorate)    │
+│   ├── One-Hot Encoding: person_home_ownership, loan_intent             │
+│   └── Stratified Split (80/20): 35,992 Train  |  8,998 Test            │
+└───────────────────────────────────┬────────────────────────────────────┘
+                                    │
+                                    ▼
+┌────────────────────────────────────────────────────────────────────────┐
+│                      MODELING & VALIDATION SUITE                       │
+│                                                                        │
+│   ├── Shallow Decision Tree (depth=4): 91% Acc | 0.943 ROC-AUC         │
+│   ├── Overfitting Audit: Full Tree (100% train / 89.4% test acc)       │
+│   ├── Production Random Forest (100 trees, balanced weights):          │
+│   │   └── 93% Test Acc | 76% Default Recall | 0.975 ROC-AUC            │
+│   ├── Feature Ablation Matrix (Drop defaults, int_rate, both -> 0.870) │
+│   ├── 5-Fold Expanding-Window CV: 0.967 ± 0.007 ROC-AUC (Fold 5 Spike) │
+│   └── TreeSHAP Explainer: 500-sample background attribution matrix     │
+└───────────────────────────────────┬────────────────────────────────────┘
+                                    │
+                                    ▼
+                            models/model.pkl
+                                    │
+                   ┌────────────────┴────────────────┐
+                   ▼                                 ▼
+┌──────────────────────────────────────┐ ┌──────────────────────────────┐
+│         FASTAPI REST BACKEND         │ │     STREAMLIT FRONTEND       │
+│               (app.py)               │ │      (streamlit_app.py)      │
+│              Port :8000              │ │          Port :8501          │
+│                                      │ │                              │
+│  - Pydantic schema validation        │ │  - Interactive loan sliders  │
+│  - Pre-cached TreeExplainer startup  │ │  - Dynamic DTI calculator    │
+│  - <25ms single-applicant inference  │ │  - Visual risk badge alerts  │
+│  - Default probability + Top drivers │ │  - Local SHAP waterfall chart│
+└──────────────────────────────────────┘ └──────────────────────────────┘
 ```
 
 ---
@@ -95,90 +121,235 @@ Given a prospective loan applicant's demographic, economic, and credit bureau da
 
 | Library / Tool | Version | Purpose | Rationale |
 |---|---|---|---|
-| **Python** | `>=3.10` | Core runtime | Standard high-performance language for scientific and ML stacks |
-| **scikit-learn** | `^1.3.0` | ML modeling & validation | Provides robust `RandomForestClassifier` with built-in `class_weight='balanced'` support |
-| **SHAP** | `^0.44.0` | Explainability & local attribution | `TreeExplainer` delivers exact polynomial-time Shapley values ($O(TLD)$) for tree ensembles |
-| **FastAPI** | `^0.109.0` | REST API backend | Asynchronous, low-latency microservice framework with automatic OpenAPI documentation |
-| **Streamlit** | `^1.31.0` | Loan officer UI | Rapid, reactive dashboard development with native plotting integration |
-| **Pydantic** | `^2.6.0` | Data validation | Strict type enforcement and sanitization on all incoming loan application payloads |
-| **pandas** | `^2.1.0` | Data manipulation | Tabular data processing, categorical encoding, and vector operations |
-| **numpy** | `^1.26.0` | Numerical computing | Array operations, winsorization math, and vector transformations |
-| **matplotlib** | `^3.8.0` | Visualization | Static EDA distributions, ROC-AUC curve plotting, and correlation matrices |
-| **seaborn** | `^0.13.0` | Statistical visualization | Heatmaps and distribution diagnostics during initial data exploration |
-| **joblib** | `^1.3.0` | Model serialization | Efficient binary serialization of scikit-learn models and transformers |
-| **uvicorn** | `^0.27.0` | ASGI server | High-performance production ASGI server powering FastAPI |
+| **Python** | `>=3.11` | Core execution environment | Standard language for modern scientific computing and machine learning |
+| **scikit-learn** | `^1.8.0` | ML modeling & validation | High-performance implementations of `DecisionTreeClassifier`, `RandomForestClassifier`, and `TimeSeriesSplit` |
+| **SHAP** | `^0.51.0` | Interpretability & feature attribution | Fast polynomial-time `TreeExplainer` for exact Shapley value decomposition |
+| **FastAPI** | `^0.162.0` | Production REST API serving | Asynchronous, low-overhead ASGI framework with automated Swagger UI and Pydantic validation |
+| **Streamlit** | `^1.66.1` | Underwriting web dashboard | Rapid reactive frontend rendering loan officer widgets and Matplotlib figures |
+| **pandas** | `^3.0.1` | Tabular data manipulation | Efficient vector slicing, categorical transformations, and summary statistics |
+| **numpy** | `^2.4.3` | Numerical array computing | High-speed vectorized operations, percentile indexing, and array mathematics |
+| **matplotlib** | `^3.10.8` | Scientific visualization | High-resolution publication-quality figure generation (EDA, confusion matrix, trees) |
+| **seaborn** | `^0.13.2` | Statistical graphics | Correlation heatmaps and comparative density plots |
+| **joblib** | `^1.5.3` | Estimator serialization | Fast binary persistence for trained scikit-learn ensemble artifacts |
+| **uvicorn** | `^0.54.0` | Production ASGI web server | Lightning-fast asynchronous server powering the FastAPI endpoints |
 
 ---
 
 ## 5. Data
 
-- **Source**: Historical consumer lending portfolio dataset (`loan_data(best).csv`).
-- **Format**: Comma-Separated Values (CSV).
-- **Size**: ~45,000 observations, 20+ raw and engineered attributes.
-- **Target Variable**: `loan_status` (Binary: `0` = Non-Default, `1` = Default).
-- **Key Features**:
-  - *Demographics*: `person_age`, `person_gender`, `person_education`.
-  - *Financials*: `person_income`, `person_home_ownership`, `loan_amnt`, `loan_int_rate`, `loan_percent_income`.
-  - *Credit History*: `cb_person_cred_hist_length`, `credit_score`, `previous_loan_defaults_on_file`, `loan_intent`.
-- **Preprocessing Applied**:
-  - Imputation and boundary enforcement eradicating physically impossible inputs (`person_age > 100`).
-  - 99th percentile winsorization on `person_income` to mitigate extreme positive skew while retaining high-net-worth signal.
-  - Three-tier feature encoding: binary mapping, ordinal mapping for education levels, and one-hot encoding for nominal loan intents.
+- **Data Source**: Historical consumer lending portfolio dataset (`loan_data(best).csv`).
+- **Primary Unit of Observation**: One record represents an individual loan application.
+- **Dataset Dimensions**:
+  - **Raw Records**: 45,000 applications, 14 attributes, 0 null values.
+  - **Cleaned Records**: 44,990 applications (10 invalid records dropped).
+- **Target Variable**: `loan_status` (Binary: `0` = Approved / Non-Default, `1` = Default).
+- **Class Skew**: **22.2% default rate** across the portfolio (35,000 approved vs. 10,000 defaults in raw data).
+
+### Raw Attribute Dictionary
+
+| Attribute | Data Type | Min | Median | Mean | Max | Description |
+|---|:---:|:---:|:---:|:---:|:---:|---|
+| `person_age` | `int64` | 20 | 26 | 27.76 | 144 | Applicant age in years (contains extreme typos > 100) |
+| `person_gender` | `str` | — | — | — | — | Applicant gender (male: 24,841, female: 20,159) |
+| `person_education` | `str` | — | — | — | — | Highest completed level: High School, Associate, Bachelor, Master, Doctorate |
+| `person_income` | `int64` | $8,000 | $67,048 | $80,319 | $7,200,766 | Annual declared gross income in USD |
+| `person_emp_exp` | `int64` | 0 | 4 | 5.41 | 125 | Employment experience in years (contains erroneous values > 60) |
+| `person_home_ownership` | `str` | — | — | — | — | Housing status: RENT (23,443), MORTGAGE (18,489), OWN (2,951), OTHER (117) |
+| `loan_amnt` | `int64` | $500 | $8,000 | $9,583 | $35,000 | Total loan principal amount requested |
+| `loan_intent` | `str` | — | — | — | — | Loan purpose (Education, Medical, Venture, Personal, Consolidation, Home Improvement) |
+| `loan_int_rate` | `float64` | 5.42% | 11.01% | 11.01% | 20.00% | Interest rate assigned to the loan contract |
+| `loan_percent_income` | `float64` | 0.00 | 0.12 | 0.14 | 0.66 | Debt-to-income ratio ($\text{loan\_amnt} / \text{person\_income}$) |
+| `cb_person_cred_hist_length` | `int64` | 2 | 4 | 5.87 | 30 | Credit bureau credit history length in years |
+| `credit_score` | `int64` | 390 | 640 | 632.6 | 850 | Credit bureau credit rating score |
+| `previous_loan_defaults_on_file` | `str` | — | — | — | — | Prior delinquency indicator: Yes (22,858), No (22,142) |
+| `loan_status` | `int64` | 0 | 0 | 0.222 | 1 | Target label: 0 = Approved, 1 = Default |
+
+### Data Hygiene & Winsorization Operations
+
+1. **Age Sanity Pruning**: 7 records with `person_age > 100` (e.g., 144, 122) were purged as severe data entry errors.
+2. **Work Experience Pruning**: 10 records with `person_emp_exp > 60` (e.g., 125 years) were inspected; 7 overlapped with the age outliers, resulting in 3 additional rows dropped.
+3. **99th Percentile Income Winsorization**: Rather than dropping 450 high-income records (which would discard valid bureau histories and skew underwriting logic), incomes were capped at the 99th percentile ($271,269) via `df['person_income'].clip(upper=income_cap)`.
+4. **Cleaned Distributions**:
+   - Applicant Age: **20 to 78 years**
+   - Work Experience: **0 to 58 years**
+   - Income: **$8,000 to $271,269**
+   - Total rows preserved: **44,990 (99.98% data retention)**.
 
 ---
 
 ## 6. Step-by-Step Pipeline
 
-1. **Data Ingestion & Integrity Checks**: Load `loan_data(best).csv`; inspect schema, null counts, duplicate records, and variable distributions.
-2. **Exploratory Data Analysis (EDA)**: Plot default rate cross-tabulations across home ownership, education, and income brackets; evaluate correlation matrix.
-3. **Outlier Filtering & Winsorization**: Enforce sanity boundaries on applicant age and employment duration; winsorize income at the 99th percentile.
-4. **Three-Tier Feature Encoding**:
-   - Binary encoding: `person_gender` and `previous_loan_defaults_on_file` mapped to $\{0, 1\}$.
-   - Ordinal encoding: `person_education` mapped sequentially (`High School`: 0 $\rightarrow$ `Doctorate`: 4).
-   - One-hot encoding: `person_home_ownership` and `loan_intent` converted to indicator columns.
-   - Ratio generation: Compute debt burden ratio `loan_percent_income = loan_amnt / person_income`.
-5. **Class Imbalance Handling**: Calculate inverse-frequency class weights:
-   $$W_c = \frac{N}{K \times N_c}$$
-   and pass `class_weight='balanced'` directly to the Random Forest estimator.
-6. **Walk-Forward Validation & Training**: Split data into chronological expanding-window cohorts; train `RandomForestClassifier(n_estimators=200, max_depth=12)` across folds to verify cross-temporal stability.
-7. **TreeSHAP Explainer Setup**: Initialize `shap.TreeExplainer(model)`; pre-extract expected values and verify local attribution consistency on validation slices.
-8. **Model Serialization**: Persist trained pipeline bundle to `model.pkl` using joblib.
-9. **Inference & Dashboard Serving**: Expose REST endpoints via FastAPI (`app.py`) and launch interactive underwriting console via Streamlit (`streamlit_app.py`).
+```mermaid
+flowchart TD
+    A["Raw loan_data(best).csv<br/>(45,000 x 14)"] --> B["Data Hygiene & Winsorization<br/>(Drop 10 bad rows, Cap income @ $271,269)"]
+    B --> C["Collinearity Pruning<br/>(Drop person_emp_exp, r=0.95 with age)"]
+    C --> D["3-Tier Feature Encoding<br/>(Binary, Ordinal, One-Hot)"]
+    D --> E["Stratified Split (80/20)<br/>Train: 35,992 | Test: 8,998"]
+    E --> F1["Decision Tree (max_depth=4)<br/>Baseline: 0.943 ROC-AUC"]
+    E --> F2["Overfitting Audit<br/>Full Tree: 100% Train / 89.4% Test"]
+    E --> F3["Random Forest (100 Trees)<br/>Class Balanced: 0.975 ROC-AUC"]
+    F3 --> G["5-Fold Expanding CV<br/>0.967 ± 0.007 ROC-AUC"]
+    F3 --> H["TreeSHAP Attribution<br/>500 Validation Samples"]
+    F3 --> I["Serialization<br/>model.pkl"]
+    I --> J1["FastAPI REST API<br/>(app.py :8000)"]
+    I --> J2["Streamlit UI<br/>(streamlit_app.py :8501)"]
+```
+
+1. **Ingestion & Completeness Audit**: Read `loan_data(best).csv`; verify zero missing cells and evaluate baseline demographic distributions.
+2. **Exploratory Data Analysis (EDA)**:
+   - Evaluated bivariate relationships and generated 4-panel diagnostic figure (`output/eda_overview.png`).
+   - Investigated deep interaction patterns and generated 3-panel distribution figure (`output/eda_deep.png`).
+3. **Feature Preprocessing & Encoding**:
+   - *Binary Encoding*: `person_gender` (female: 0, male: 1), `previous_loan_defaults_on_file` (No: 0, Yes: 1) via `LabelEncoder`.
+   - *Hierarchical Ordinal Encoding*: `person_education` mapped linearly (`High School`: 0 $\rightarrow$ `Associate`: 1 $\rightarrow$ `Bachelor`: 2 $\rightarrow$ `Master`: 3 $\rightarrow$ `Doctorate`: 4).
+   - *One-Hot Dummy Variables*: `person_home_ownership` (baseline `MORTGAGE`) and `loan_intent` (baseline `DEBTCONSOLIDATION`) converted via `pd.get_dummies(drop_first=True)`.
+   - *Multicollinearity Removal*: Pruned `person_emp_exp` from the feature matrix, leaving **18 predictive inputs + 1 target**.
+4. **Stratified Partitioning**: Partitioned dataset into 80% training (35,992 rows) and 20% test (8,998 rows) with exact stratification maintaining 22.2% default prevalence across both subsets.
+5. **Shallow Decision Tree Benchmarking**: Fitted regularized decision tree (`max_depth=4`) delivering transparent decision rules and baseline ROC-AUC of 0.943.
+6. **Ensemble Modeling (Random Forest)**: Fitted 100-estimator Random Forest incorporating cost-sensitive inverse class weights:
+   $$W_c = \frac{N}{K \cdot N_c}$$
+   boosting default class recall from 71% to 76% and achieving 0.975 ROC-AUC.
+7. **Feature Ablation & Leakage Stress-Testing**: Executed controlled ablation experiments sequentially dropping `previous_loan_defaults_on_file`, `loan_int_rate`, and both across Decision Tree and Random Forest architectures to evaluate signal concentration and establish a clean pre-pricing baseline.
+8. **Expanding-Window Cross-Validation & Anomaly Diagnosis**: Validated sequence stability across 5 folds using `TimeSeriesSplit`, yielding a cross-validation score of $0.967 \pm 0.007$ and diagnosing a persistent row-order anomaly where Fold 5 outperforms all other folds across every single ablation run.
+9. **SHAP Feature Importance & Local Attribution**: Configured `shap.TreeExplainer` to extract global mean absolute Shapley values and local per-applicant waterfall charts.
+10. **Serving & Dashboard Delivery**: Encapsulated the trained model into a high-performance REST API (`app.py`) and Streamlit lending officer console (`streamlit_app.py`).
 
 ---
 
 ## 7. Problems Faced & How We Solved Them
 
-| Problem | Impact | How We Got Around It |
+| Problem | Impact | How We Solved It |
 |---|---|---|
-| **Class imbalance** (~20% defaults vs 80% non-defaults) | Model predicted "Approved" for nearly all applicants, yielding high accuracy but near-zero minority default recall | Used `class_weight='balanced'` in `RandomForestClassifier` which automatically assigns inverse-frequency weights: $W_c = N / (K \times N_c)$. This penalizes false negatives without requiring synthetic oversampling artifacts (SMOTE) |
-| **Mixed feature types** (categorical + numerical + binary) | Raw mixed tabular data could not be ingested by tree estimators without formatting errors | Implemented a structured 3-tier encoding strategy: binary mapping for gender and default flags, ordinal ranking for education levels (0-4), and one-hot encoding for nominal categories (home ownership, loan intent) |
-| **Spurious age outliers** (ages > 100 in raw data) | Erroneous demographic data points skewed feature distributions and corrupted split thresholds | Applied strict boundary validation to eliminate impossible age values and 99th percentile winsorization on income to cap extreme outliers while retaining genuine affluent borrowers |
-| **SHAP computation latency** for real-time API | Standard KernelSHAP took several seconds per request, making REST API timeouts inevitable | Switched to `shap.TreeExplainer` (exact polynomial-time TreeSHAP) and pre-computed the background expected values once at server startup, achieving sub-25ms per-applicant attribution |
-| **Walk-forward validation vs K-Fold** | Standard random k-fold cross-validation leaked forward-looking macroeconomic conditions into historical training folds, artificially inflating ROC-AUC | Replaced standard k-fold with expanding-window walk-forward time splits that evaluate exclusively on chronological future loan cohorts, preventing temporal information leakage |
+| **Severe Class Imbalance** (22.2% defaults vs. 77.8% approved) | Naive classifiers predict all applicants as "Approved", scoring ~78% accuracy but missing 100% of defaults, causing catastrophic loan book write-offs | Integrated cost-sensitive weighting via `class_weight='balanced'` inside `RandomForestClassifier`. This penalizes false negatives proportionally ($W_{\text{default}} \approx 2.25$, $W_{\text{approved}} \approx 0.64$), lifting default recall to **76%** with **90% precision** |
+| **Dominant Signal & Pricing Leakage Vulnerability** | `loan_int_rate` and `previous_loan_defaults_on_file` dominate splits; in actual bank origination, interest rates are assigned *by* lenders (reverse causality) | Executed an explicit **Feature Ablation Stress-Test Matrix**. Proved that when both columns are removed, the Random Forest retains a solid **0.870 ROC-AUC** based purely on fundamental borrower economics (`loan_percent_income`, income, homeownership, credit score) |
+| **Row-Order Anomaly (Fold 5 Peak Across All Runs)** | 5-fold `TimeSeriesSplit` revealed Fold 5 consistently peaked (up to 0.980 AUC) across every ablation run, proving row sequence is not random despite lack of timestamps | Diagnosed that raw data has latent batching or unrecorded sorting; documented the anomaly transparently and verified that while row order shouldn't matter, no overt pattern exists in individual features |
+| **Extreme Outlier Corruption** (Age 144, Experience 125 yrs) | Impossible demographic entries distort splits and create spurious tree decision branches | Evaluated domain bounds: dropped 10 impossible rows (age > 100, exp > 60). Capped extreme incomes at the 99th percentile ($271,269) via `.clip()`, controlling variance without discarding 450 valid records |
+| **High Multicollinearity** between Age and Experience ($r = 0.95$) | Including both features diluted tree split importance and inflated feature correlation matrices | Pruned `person_emp_exp` entirely, retaining `person_age` as the primary seniority indicator and reducing feature dimensionality to 18 clean inputs |
+| **Severe Overfitting in Unconstrained Trees** | An unpruned Decision Tree achieved 100% training accuracy but plummeted to 89.4% on the test set (10.6% generalization gap) | Constrained tree depth (`max_depth=4`), achieving matching 90.9% train and test accuracy; transitioned to Random Forest ensemble with bagging to capture non-linear patterns without variance inflation |
+| **Regulatory Adverse Action Requirement** | Financial regulators prohibit unexplainable "black-box" credit underwriting models | Embedded `shap.TreeExplainer` into the FastAPI startup lifecycle to return sub-25ms Shapley contribution vectors for every scored applicant |
 
 ---
 
 ## 8. Results & Evaluation
 
-### Model Performance Metrics
+### 8.1 Baseline Model Performance Comparison
 
-| Metric | Cross-Validation Score | Interpretation |
-|---|---|---|
-| **ROC-AUC** | **0.934 – 0.951** | Strong discriminatory ability between defaulting and performing loans |
-| **Default Class Recall** | **84.2%** | Captures majority of risky borrowers under balanced weighting |
-| **Precision (Default)** | **76.8%** | Controlled false rejection rate for low-risk applicants |
-| **Inference Latency** | **<25 ms** | Real-time TreeSHAP attribution and prediction per API call |
+Evaluated on the held-out stratified test set (**8,998 applications**, 22.2% default rate):
 
-### Top Predictive Feature Drivers (Global SHAP Importance)
+| Model Architecture | Hyperparameters | Train Acc | Test Acc | Approved Prec / Rec | Default Prec / Rec | Default F1 | Test ROC-AUC | 5-Fold CV AUC |
+|---|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| **Full Decision Tree** | Unconstrained depth | **1.000** | 0.894 | 0.93 / 0.93 | 0.77 / 0.75 | 0.76 | 0.844 | — |
+| **Shallow Decision Tree** | `max_depth=4` | 0.909 | **0.909** | 0.92 / 0.97 | 0.86 / **0.71** | 0.77 | **0.943** | — |
+| **Production Random Forest** | 100 trees, `balanced` | 0.999 | **0.930** | **0.93 / 0.97** | **0.90 / 0.76** | **0.82** | **0.975** | **0.967 ± 0.007** |
 
-| Rank | Feature | Description | Direction of Risk Impact |
-|:---:|---|---|---|
-| 1 | `loan_percent_income` | Loan amount divided by annual salary | Higher ratio sharply increases default risk |
-| 2 | `credit_score` | Bureau credit score | Lower score significantly increases default risk |
-| 3 | `previous_loan_defaults_on_file` | Prior delinquency flag | Past delinquency strongly elevates risk score |
-| 4 | `loan_int_rate` | Assigned loan interest rate | Higher rate reflects risk premium and drives default |
-| 5 | `loan_amnt` | Principal loan amount requested | Higher absolute exposure increases default probability |
+#### Detailed Classification Report: Production Random Forest
+
+```text
+              precision    recall  f1-score   support
+
+    Approved       0.93      0.97      0.95      6998
+     Default       0.90      0.76      0.82      2000
+
+    accuracy                           0.93      8998
+   macro avg       0.92      0.87      0.89      8998
+weighted avg       0.93      0.93      0.93      8998
+
+Test ROC-AUC: 0.975
+```
+
+---
+
+### 8.2 Confusion Matrix Diagnostics & Cost Asymmetry
+
+On the held-out test cohort of 8,998 applicants (6,998 Approved, 2,000 Defaults), the Decision Tree baseline (`output/confusion_matrix.png`) establishes the underwriting error tradeoff:
+
+```text
+                       Predicted: Approved    Predicted: Default
+Actual: Approved (0)          6,782 (TN)              216 (FP)
+Actual: Default  (1)            567 (FN)            1,433 (TP)
+```
+
+- **True Negatives (6,782)**: Solvent borrowers correctly identified and approved (96.9% specificity).
+- **True Positives (1,433)**: Defaulters correctly flagged and denied (71.7% sensitivity).
+- **False Positives (216)**: Low-risk applicants incorrectly flagged as risky (Opportunity cost: lost interest margin).
+- **False Negatives (567)**: High-risk defaulters misclassified as approved (Credit loss: unrecoverable principal write-offs).
+
+> [!IMPORTANT]
+> The Random Forest classifier reduces false negatives from 567 down to 480, capturing an additional 87 defaulting borrowers and protecting substantial lending capital.
+
+---
+
+### 8.3 Feature Ablation & Leakage Stress-Testing (Dropping Columns)
+
+To determine how much predictive performance relies on dominant or potentially circular features, we executed a rigorous feature ablation experiment across both Decision Tree and Random Forest architectures, dropping `previous_loan_defaults_on_file`, `loan_int_rate`, and both simultaneously:
+
+| Dropped Column(s) | Decision Tree AUC | Random Forest AUC | Expanding-Window CV AUC (Row Order) | Random Forest Default Recall |
+|---|:---:|:---:|:---:|:---:|
+| **None (Full Baseline)** | **0.943** | **0.975** | **0.967 ± 0.007** | **0.76** |
+| `previous_loan_defaults_on_file` | 0.864 | 0.927 | 0.902 ± 0.022 | 0.65 |
+| `loan_int_rate` | 0.919 | 0.953 | 0.936 ± 0.017 | 0.65 |
+| **Both (`defaults` + `int_rate`)** | **0.770** | **0.870** | **0.822 ± 0.044** | **0.50** |
+
+#### Key Empirical Takeaways from the Ablation Audit:
+
+1. **Massive Signal Concentration in Historical Defaults & Rates**:
+   - `previous_loan_defaults_on_file` is the single most influential individual feature. Dropping it causes Decision Tree AUC to plunge from **0.943 $\rightarrow$ 0.864** and Random Forest Default Recall to drop from **0.76 $\rightarrow$ 0.65**.
+   - Dropping both features degrades Random Forest ROC-AUC by over 10 points (**0.975 $\rightarrow$ 0.870**) and cuts default recall down to **0.50** (the model misses 50% of real defaulters).
+2. **Robust Fundamental Baseline (0.870 ROC-AUC)**:
+   - Even when stripped of both circular predictors, the Random Forest model achieves an impressive **0.870 ROC-AUC** relying solely on fundamental borrower characteristics: debt-to-income (`loan_percent_income`), annual earnings (`person_income`), housing stability (`person_home_ownership`), and bureau `credit_score`.
+   - This proves that the model possesses genuine underwriting intelligence and does not merely memorize historical flags or rate assignments.
+3. **Defense Against Risk-Based Pricing Reverse Causality**:
+   - In commercial banking origination, `loan_int_rate` is assigned *after* credit evaluation by underwriters or scoring engines. Serving a model that relies heavily on interest rate can introduce target leakage.
+   - The ablated model variant (**0.870 AUC**) serves as a clean, pre-origination benchmark that underwriting teams can deploy before interest rate tiers are fixed.
+
+---
+
+### 8.4 Expanding-Window Cross-Validation & Row-Order Anomaly (TimeSeriesSplit)
+
+To evaluate sequential stability and detect potential temporal leakage, a 5-fold expanding-window cross-validation (`TimeSeriesSplit`) was executed across the dataset row order:
+
+| Split Fold | Training Window Size | Validation Window Size | Fold ROC-AUC | Empirical Observation |
+|:---:|:---:|:---:|:---:|---|
+| **Fold 1** | 7,500 records | 7,498 records | **0.959** | Baseline initial window |
+| **Fold 2** | 14,998 records | 7,498 records | **0.966** | Expanding sample stabilization |
+| **Fold 3** | 22,496 records | 7,498 records | **0.966** | Consistent discrimination |
+| **Fold 4** | 29,994 records | 7,498 records | **0.962** | Minor shift in data window |
+| **Fold 5** | 37,492 records | 7,498 records | **0.980** | **Deterministic peak across all runs** |
+| **Aggregate** | — | — | **0.967 ± 0.007** | High sequential stability |
+
+#### The Row-Order Anomaly (Fold 5 Peak Across All Runs)
+
+In a truly randomized dataset, sequential expanding-window evaluation should not exhibit a deterministic peak on the final fold across every ablation run. In our experiments, **Fold 5 was consistently the highest-performing fold in every single run**:
+
+- **None dropped**: Fold 5 = **0.980** (vs. Folds 1–4 average: ~0.963)
+- **Drop `previous_loan_defaults_on_file`**: Fold 5 = **0.943** (vs. Folds 1–4 average: ~0.892)
+- **Drop `loan_int_rate`**: Fold 5 = **0.965** (vs. Folds 1–4 average: ~0.929)
+- **Drop both**: Fold 5 = **0.905** (vs. Folds 1–4 average: ~0.801)
+
+> [!WARNING]
+> **Why this is an Anomaly**:
+> In credit risk modeling, row order shouldn't matter when evaluating non-temporal tabular records. However, the persistent spike in Fold 5 proves that **row order in `loan_data(best).csv` is not random**.
+> 
+> Interestingly, an inspection of individual attributes (age, income, credit score, loan amount, or intent) reveals **no obvious explicit sorting pattern** (e.g., the CSV is not ordered by income or score ascending/descending, and no date column exists). This strongly suggests a subtle latent batching artifact—such as unrecorded origination cohorts, sequential regional extractions, or non-uniform bureau extraction runs. Acknowledging this anomaly is critical to avoid misplaced confidence in temporal walk-forward simulations.
+
+---
+
+### 8.5 Global Feature Importance: Tree Gini vs. TreeSHAP
+
+Comparing classical Decision Tree Gini impurity reduction against 500-sample test set TreeSHAP mean absolute attribution:
+
+| Rank | Predictive Feature | Decision Tree Gini Importance | Random Forest Mean \|SHAP\| | Primary Underwriting Interpretation |
+|:---:|---|:---:|:---:|---|
+| 1 | `previous_loan_defaults_on_file` | **0.2952** (29.5%) | **0.2174** | Prior delinquency is the single most potent indicator of future default |
+| 2 | `loan_int_rate` | **0.1702** (17.0%) | **0.1017** | Higher interest rates reflect risk-tier pricing and compound debt burdens |
+| 3 | `loan_percent_income` | **0.1577** (15.8%) | **0.0926** | Debt burden metric ($r = 0.39$); defaults spike exponentially above 20% |
+| 4 | `person_income` | **0.1250** (12.5%) | **0.0583** | Higher income provides an economic solvency buffer ($50k vs $75k median) |
+| 5 | `person_home_ownership_RENT` | **0.0401** (4.0%) | **0.0499** | Renters default at 32% vs. 8% for homeowners (4x risk multiple) |
+| 6 | `credit_score` | **0.0570** (5.7%) | **0.0235** | Bureau score acts as a non-linear threshold rather than a linear predictor |
+| 7 | `loan_amnt` | **0.0330** (3.3%) | **0.0235** | Nominal requested balance; interacts directly with income ratio |
+| 8 | `loan_intent_VENTURE` | 0.0084 (0.8%) | **0.0191** | Venture loans demonstrate higher volatility and default tendency |
+| 9 | `person_home_ownership_OWN` | 0.0083 (0.8%) | **0.0121** | Asset ownership provides collateral security and lowers risk |
+| 10 | `loan_intent_EDUCATION` | 0.0069 (0.7%) | **0.0107** | Educational borrowing exhibits marginally lower default rates |
 
 ---
 
@@ -186,13 +357,21 @@ Given a prospective loan applicant's demographic, economic, and credit bureau da
 
 ```text
 Credit Default Predictor/
-├── main.ipynb              # ML pipeline: EDA, feature engineering, RF training, SHAP analysis
-├── app.py                  # FastAPI REST backend serving predictions & SHAP vectors
-├── streamlit_app.py        # Streamlit lending officer dashboard
+├── main.ipynb              # Complete analytical workflow: EDA, cleaning, DT, RF, CV, and SHAP
+├── main1.ipynb             # Scratch verification notebook
+├── credit_core.py          # Standalone training and verification script
+├── app.py                  # Production FastAPI REST inference service
+├── streamlit_app.py        # Streamlit interactive loan officer interface
 ├── model.pkl               # Serialized Random Forest model bundle
-├── loan_data(best).csv     # Preprocessed historical loan dataset (~45k records)
-├── requirements.txt        # Production dependencies (scikit-learn, fastapi, streamlit, shap, etc.)
-└── README.md               # Project documentation
+├── loan_data(best).csv     # Raw portfolio dataset (45,000 applications)
+├── requirements.txt        # Production dependency specifications
+├── README.md               # Comprehensive system documentation
+└── output/                 # Generated analytical and diagnostic visual artifacts
+    ├── confusion_matrix.png # Decision Tree test confusion matrix
+    ├── decision_tree.png    # Visual representation of the first 3 tree levels
+    ├── eda_overview.png     # 4-panel exploratory distribution dashboard
+    ├── eda_deep.png         # 3-panel deep interaction and density plots
+    └── shap_summary.png     # Global TreeSHAP feature attribution summary plot
 ```
 
 ---
@@ -204,7 +383,7 @@ Credit Default Predictor/
 ```bash
 cd "Credit Default Predictor"
 
-# Create virtual environment
+# Create Python virtual environment
 python -m venv venv
 
 # Activate virtual environment
@@ -213,38 +392,38 @@ python -m venv venv
 # Linux / macOS:
 source venv/bin/activate
 
-# Install dependencies
+# Install required dependencies
 pip install -r requirements.txt
 ```
 
-### Step 2: Retrain or Inspect the Model (Optional)
+### Step 2: Reproduce Analytical Pipeline (Optional)
 
-A production-ready pre-trained model is already serialized as `model.pkl`. To re-run EDA, modify features, or retrain:
+The pre-trained model is serialized as `model.pkl`. To re-execute data hygiene, visual EDA, tree visualizations, and cross-validation:
 
 ```bash
 jupyter notebook main.ipynb
 ```
 
-### Step 3: Start FastAPI Backend
+### Step 3: Launch FastAPI REST Server
 
-Launch the REST inference server in **Terminal 1**:
+In **Terminal 1**, run the low-latency API server:
 
 ```bash
 uvicorn app:app --reload --port 8000
 ```
 
 - API Base URL: `http://127.0.0.1:8000`
-- Interactive Swagger UI: `http://127.0.0.1:8000/docs`
+- Interactive OpenAPI Docs (Swagger): `http://127.0.0.1:8000/docs`
 
 ### Step 4: Start Streamlit Frontend
 
-In **Terminal 2**, launch the loan officer dashboard:
+In **Terminal 2**, launch the loan officer console:
 
 ```bash
 streamlit run streamlit_app.py --server.port 8501
 ```
 
-- Web UI URL: `http://localhost:8501`
+- Web Console: `http://localhost:8501`
 
 ---
 
@@ -252,12 +431,12 @@ streamlit run streamlit_app.py --server.port 8501
 
 ### Endpoints
 
-| Method | Endpoint | Description | Auth |
-|---|---|---|---|
-| `GET` | `/` | Health check and service status | None |
-| `POST` | `/predict` | Evaluates loan application and returns default probability + SHAP | None |
+| Method | Endpoint | Description | Auth Required |
+|---|---|---|:---:|
+| `GET` | `/` | Service health status check | None |
+| `POST` | `/predict` | Scores loan application; returns probability and top 5 SHAP drivers | None |
 
-### Sample Request (`POST /predict`)
+### Sample Payload (`POST /predict`)
 
 ```bash
 curl -X POST http://127.0.0.1:8000/predict \
@@ -288,12 +467,22 @@ curl -X POST http://127.0.0.1:8000/predict \
 
 ```json
 {
-  "prediction": "Approved",
+  "prediction": 0,
+  "label": "Approved",
   "default_probability": 0.184,
-  "top_risk_factors": [
-    {"feature": "loan_percent_income", "shap_value": 0.082},
-    {"feature": "loan_int_rate", "shap_value": 0.045},
-    {"feature": "credit_score", "shap_value": -0.112}
+  "shap_values": {
+    "loan_percent_income": 0.082,
+    "loan_int_rate": 0.045,
+    "credit_score": -0.112,
+    "person_home_ownership_RENT": 0.038,
+    "previous_loan_defaults_on_file": -0.145
+  },
+  "top_drivers": [
+    {"feature": "previous_loan_defaults_on_file", "shap": -0.145},
+    {"feature": "credit_score", "shap": -0.112},
+    {"feature": "loan_percent_income", "shap": 0.082},
+    {"feature": "loan_int_rate", "shap": 0.045},
+    {"feature": "person_home_ownership_RENT", "shap": 0.038}
   ]
 }
 ```
@@ -305,7 +494,7 @@ curl -X POST http://127.0.0.1:8000/predict \
 ### Containerization (Docker)
 
 ```dockerfile
-FROM python:3.10-slim
+FROM python:3.11-slim
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
@@ -315,40 +504,39 @@ CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]
 ```
 
 ```bash
+# Build Docker image
 docker build -t credit-default-predictor .
+
+# Run containerized microservice
 docker run -p 8000:8000 credit-default-predictor
 ```
-
-### Production ASGI Service (systemd)
-
-For native Linux VMs, configure `uvicorn` as a systemd service managed behind an Nginx reverse proxy with SSL termination and rate limiting.
 
 ---
 
 ## 13. Connected Portfolio Projects
 
-- **[SEBI RAG Bot](https://github.com/RaajitSingh1306/sebi-rag-bot)**: Multi-agent regulatory compliance assistant covering RBI Model Risk Management directives and DPDP statutory frameworks.
-- **[Volatility Intelligence Platform](https://github.com/RaajitSingh1306/volatility-intelligence-platform)**: Flagship quant finance platform applying TreeSHAP explainability to macro regime classification.
-- **[ThreatMind](https://github.com/RaajitSingh1306/ThreatMind)**: Cybersecurity intrusion detection platform utilizing tree ensembles and explainable anomaly detection.
+- **[Finance KPI Pipeline](https://github.com/RaajitSingh1306/Finance_KPI)**: Automated portfolio analytics computing CAGR, annualized volatility, Sharpe ratio, and drawdown diagnostics for equity series.
+- **[Global Market HeatMap](https://github.com/RaajitSingh1306/Global-Equity-Market-Dashboard)**: Multi-asset cross-sectional risk and return monitoring platform across Indian and US equities.
+- **[Volatility Intelligence Platform](https://github.com/RaajitSingh1306/volatility-intelligence-platform)**: Econometric risk engine featuring GARCH(1,1) volatility forecasting and TreeSHAP macro explainability.
 
 ---
 
 ## 14. Limitations & Known Issues
 
-- **Static Ingestion**: The training dataset (`loan_data(best).csv`, ~45,000 observations) represents a historical static cohort without real-time Loan Origination System (LOS) streaming feeds.
-- **Absence of Algorithmic Fairness Audit**: Does not currently implement formal disparate impact audits (demographic parity, equalized odds) across protected demographic categories.
-- **Self-Reported Income**: Relies on self-reported `person_income` without automated payroll/tax bank verification APIs.
-- **Single Model Family**: Production serving utilizes Random Forest only; no dynamic model routing or stacking with LightGBM/CatBoost.
-- **No Population Stability Monitoring**: Lacks automated tracking for Population Stability Index (PSI) or Characteristic Stability Index (CSI) to detect post-deployment credit score drift.
+- **Absence of Origination Timestamps**: `loan_data(best).csv` lacks explicit datetime attributes, preventing strict out-of-time (OOT) cohort partitioning and macroeconomic vintage tracking.
+- **Row-Order Sequence Anomaly (Fold 5 Peak Across All Runs)**: `TimeSeriesSplit` cross-validation revealed that Fold 5 was the highest-performing fold across every single ablation experiment (0.980, 0.943, 0.965, 0.905). While row order shouldn't matter in tabular credit scoring, this deterministic peak proves row order isn't random—even though inspection of individual features reveals no overt sorting pattern.
+- **Signal Concentration & Pricing Leakage**: `previous_loan_defaults_on_file` and `loan_int_rate` carry over 10 points of ROC-AUC. Dropping both reduces Random Forest Default Recall from 0.76 to 0.50. Furthermore, interest rates in commercial lending are assigned *after* credit risk tiering, introducing reverse causality if used during pre-approval.
+- **Self-Reported Income Bias**: Relies on unverified self-reported `person_income` without automated payroll/tax bank verification APIs.
+- **Static Decision Thresholds**: Uses a standard 0.50 probability cutoff; production banking systems require dynamically tuned decision thresholds based on explicit loan loss provisions and funding costs.
 
 ---
 
 ## 15. Roadmap / Future Expansion
 
-- [ ] **Multi-Model Benchmark Suite**: Add automated hyperparameter tuning and benchmarking against LightGBM, CatBoost, and TabNet architectures.
-- [ ] **Fairness & Bias Audit Engine**: Implement AIF360 / Fairlearn metrics to guarantee regulatory compliance with Fair Lending standards.
-- [ ] **Drift & PSI Monitoring**: Build an automated monitoring pipeline tracking feature distribution shifts and Population Stability Index.
-- [ ] **Open Banking Ingestion**: Integrate Account Aggregator (AA) sandbox APIs for automated bank statement analysis and cash-flow underwriting.
+- [ ] **Dual-Model Serving (Pre- vs. Post-Pricing)**: Deploy the fully ablated model variant (AUC 0.870) for pre-origination pricing exploration, alongside the full baseline model (AUC 0.975) for post-pricing risk monitoring.
+- [ ] **Dynamic Threshold Optimization**: Incorporate custom utility/cost matrix scoring to select the optimal cutoff that minimizes expected default losses.
+- [ ] **Algorithmic Fairness & Bias Auditing**: Implement Fairlearn/AIF360 to evaluate equalized odds and demographic parity across demographic subgroups.
+- [ ] **Population Stability Monitoring (PSI/CSI)**: Build automated drift detection pipelines to trigger model retraining upon significant feature distribution shift.
 
 ---
 
@@ -358,4 +546,4 @@ For native Linux VMs, configure `uvicorn` as a systemd service managed behind an
 This project is licensed under the [MIT License](https://opensource.org/licenses/MIT).
 
 ### Disclaimer
-This system is built for educational, research, and portfolio demonstration purposes. Real-world credit underwriting requires regulatory compliance (fair lending audits, disparate impact analysis), model monitoring for covariate shift, and certified human-in-the-loop underwriting review.
+This software is intended strictly for educational, quantitative research, and portfolio demonstration purposes. It does not constitute formal financial underwriting advice or a certified credit rating system. Actual commercial lending deployment requires formal statutory compliance, fair lending audits, and certified human-in-the-loop underwriting review.

@@ -120,7 +120,7 @@ Given an applicant's demographic profile, financial indicators, and historical c
 ## 4. Tech Stack & Libraries
 
 | Library / Tool | Version | Purpose | Rationale |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | **Python** | `>=3.11` | Core execution environment | Standard language for modern scientific computing and machine learning |
 | **scikit-learn** | `^1.8.0` | ML modeling & validation | High-performance implementations of `DecisionTreeClassifier`, `RandomForestClassifier`, and `TimeSeriesSplit` |
 | **SHAP** | `^0.51.0` | Interpretability & feature attribution | Fast polynomial-time `TreeExplainer` for exact Shapley value decomposition |
@@ -148,7 +148,7 @@ Given an applicant's demographic profile, financial indicators, and historical c
 ### Raw Attribute Dictionary
 
 | Attribute | Data Type | Min | Median | Mean | Max | Description |
-|---|:---:|:---:|:---:|:---:|:---:|---|
+| --- | :---: | :---: | :---: | :---: | :---: | --- |
 | `person_age` | `int64` | 20 | 26 | 27.76 | 144 | Applicant age in years (contains extreme typos > 100) |
 | `person_gender` | `str` | — | — | — | — | Applicant gender (male: 24,841, female: 20,159) |
 | `person_education` | `str` | — | — | — | — | Highest completed level: High School, Associate, Bachelor, Master, Doctorate |
@@ -180,19 +180,24 @@ Given an applicant's demographic profile, financial indicators, and historical c
 ## 6. Step-by-Step Pipeline
 
 ```mermaid
-flowchart TD
-    A["Raw loan_data(best).csv<br/>(45,000 x 14)"] --> B["Data Hygiene & Winsorization<br/>(Drop 10 bad rows, Cap income @ $271,269)"]
-    B --> C["Collinearity Pruning<br/>(Drop person_emp_exp, r=0.95 with age)"]
-    C --> D["3-Tier Feature Encoding<br/>(Binary, Ordinal, One-Hot)"]
-    D --> E["Stratified Split (80/20)<br/>Train: 35,992 | Test: 8,998"]
-    E --> F1["Decision Tree (max_depth=4)<br/>Baseline: 0.943 ROC-AUC"]
-    E --> F2["Overfitting Audit<br/>Full Tree: 100% Train / 89.4% Test"]
-    E --> F3["Random Forest (100 Trees)<br/>Class Balanced: 0.975 ROC-AUC"]
-    F3 --> G["5-Fold Expanding CV<br/>0.967 ± 0.007 ROC-AUC"]
-    F3 --> H["TreeSHAP Attribution<br/>500 Validation Samples"]
-    F3 --> I["Serialization<br/>model.pkl"]
-    I --> J1["FastAPI REST API<br/>(app.py :8000)"]
+flowchart TD 
+
+    A["Raw loan_data(best).csv<br/>(45,000 x 14)"] --> B["Data Hygiene & Winsorization<br/>(Drop 10 bad rows, Cap income @ $271,269)"] 
+    B --> C["Collinearity Pruning<br/>(Drop person_emp_exp, r=0.95 with age)"] 
+    C --> D["3-Tier Feature Encoding<br/>(Binary, Ordinal, One-Hot)"] 
+    D --> E["Stratified Split (80/20)<br/>Train: 35,992 | Test: 8,998"] 
+    
+    E --> F1["Decision Tree (max_depth=4)<br/>Baseline: 0.943 ROC-AUC"] 
+    E --> F2["Overfitting Audit<br/>Full Tree: 100% Train / 89.4% Test"] 
+    E --> F3["Random Forest (100 Trees)<br/>Class Balanced: 0.975 ROC-AUC"] 
+    
+    F3 --> G["5-Fold Expanding CV<br/>0.967 ± 0.007 ROC-AUC"] 
+    F3 --> H["TreeSHAP Attribution<br/>500 Validation Samples"] 
+    F3 --> I["Serialization<br/>model.pkl"] 
+    
+    I --> J1["FastAPI REST API<br/>(app.py :8000)"] 
     I --> J2["Streamlit UI<br/>(streamlit_app.py :8501)"]
+
 ```
 
 1. **Ingestion & Completeness Audit**: Read `loan_data(best).csv`; verify zero missing cells and evaluate baseline demographic distributions.
@@ -219,7 +224,7 @@ flowchart TD
 ## 7. Problems Faced & How We Solved Them
 
 | Problem | Impact | How We Solved It |
-|---|---|---|
+| --- | --- | --- |
 | **Severe Class Imbalance** (22.2% defaults vs. 77.8% approved) | Naive classifiers predict all applicants as "Approved", scoring ~78% accuracy but missing 100% of defaults, causing catastrophic loan book write-offs | Integrated cost-sensitive weighting via `class_weight='balanced'` inside `RandomForestClassifier`. This penalizes false negatives proportionally ($W_{\text{default}} \approx 2.25$, $W_{\text{approved}} \approx 0.64$), lifting default recall to **76%** with **90% precision** |
 | **Dominant Signal & Pricing Leakage Vulnerability** | `loan_int_rate` and `previous_loan_defaults_on_file` dominate splits; in actual bank origination, interest rates are assigned *by* lenders (reverse causality) | Executed an explicit **Feature Ablation Stress-Test Matrix**. Proved that when both columns are removed, the Random Forest retains a solid **0.870 ROC-AUC** based purely on fundamental borrower economics (`loan_percent_income`, income, homeownership, credit score) |
 | **Row-Order Anomaly (Fold 5 Peak Across All Runs)** | 5-fold `TimeSeriesSplit` revealed Fold 5 consistently peaked (up to 0.980 AUC) across every ablation run, proving row sequence is not random despite lack of timestamps | Diagnosed that raw data has latent batching or unrecorded sorting; documented the anomaly transparently and verified that while row order shouldn't matter, no overt pattern exists in individual features |
@@ -237,7 +242,7 @@ flowchart TD
 Evaluated on the held-out stratified test set (**8,998 applications**, 22.2% default rate):
 
 | Model Architecture | Hyperparameters | Train Acc | Test Acc | Approved Prec / Rec | Default Prec / Rec | Default F1 | Test ROC-AUC | 5-Fold CV AUC |
-|---|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| --- | --- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
 | **Full Decision Tree** | Unconstrained depth | **1.000** | 0.894 | 0.93 / 0.93 | 0.77 / 0.75 | 0.76 | 0.844 | — |
 | **Shallow Decision Tree** | `max_depth=4` | 0.909 | **0.909** | 0.92 / 0.97 | 0.86 / **0.71** | 0.77 | **0.943** | — |
 | **Production Random Forest** | 100 trees, `balanced` | 0.999 | **0.930** | **0.93 / 0.97** | **0.90 / 0.76** | **0.82** | **0.975** | **0.967 ± 0.007** |
@@ -284,13 +289,13 @@ Actual: Default  (1)            567 (FN)            1,433 (TP)
 To determine how much predictive performance relies on dominant or potentially circular features, we executed a rigorous feature ablation experiment across both Decision Tree and Random Forest architectures, dropping `previous_loan_defaults_on_file`, `loan_int_rate`, and both simultaneously:
 
 | Dropped Column(s) | Decision Tree AUC | Random Forest AUC | Expanding-Window CV AUC (Row Order) | Random Forest Default Recall |
-|---|:---:|:---:|:---:|:---:|
+| --- | :---: | :---: | :---: | :---: |
 | **None (Full Baseline)** | **0.943** | **0.975** | **0.967 ± 0.007** | **0.76** |
 | `previous_loan_defaults_on_file` | 0.864 | 0.927 | 0.902 ± 0.022 | 0.65 |
 | `loan_int_rate` | 0.919 | 0.953 | 0.936 ± 0.017 | 0.65 |
 | **Both (`defaults` + `int_rate`)** | **0.770** | **0.870** | **0.822 ± 0.044** | **0.50** |
 
-#### Key Empirical Takeaways from the Ablation Audit:
+#### Key Empirical Takeaways from the Ablation Audit
 
 1. **Massive Signal Concentration in Historical Defaults & Rates**:
    - `previous_loan_defaults_on_file` is the single most influential individual feature. Dropping it causes Decision Tree AUC to plunge from **0.943 $\rightarrow$ 0.864** and Random Forest Default Recall to drop from **0.76 $\rightarrow$ 0.65**.
@@ -309,7 +314,7 @@ To determine how much predictive performance relies on dominant or potentially c
 To evaluate sequential stability and detect potential temporal leakage, a 5-fold expanding-window cross-validation (`TimeSeriesSplit`) was executed across the dataset row order:
 
 | Split Fold | Training Window Size | Validation Window Size | Fold ROC-AUC | Empirical Observation |
-|:---:|:---:|:---:|:---:|---|
+| :---: | :---: | :---: | :---: | --- |
 | **Fold 1** | 7,500 records | 7,498 records | **0.959** | Baseline initial window |
 | **Fold 2** | 14,998 records | 7,498 records | **0.966** | Expanding sample stabilization |
 | **Fold 3** | 22,496 records | 7,498 records | **0.966** | Consistent discrimination |
@@ -329,7 +334,7 @@ In a truly randomized dataset, sequential expanding-window evaluation should not
 > [!WARNING]
 > **Why this is an Anomaly**:
 > In credit risk modeling, row order shouldn't matter when evaluating non-temporal tabular records. However, the persistent spike in Fold 5 proves that **row order in `loan_data(best).csv` is not random**.
-> 
+>
 > Interestingly, an inspection of individual attributes (age, income, credit score, loan amount, or intent) reveals **no obvious explicit sorting pattern** (e.g., the CSV is not ordered by income or score ascending/descending, and no date column exists). This strongly suggests a subtle latent batching artifact—such as unrecorded origination cohorts, sequential regional extractions, or non-uniform bureau extraction runs. Acknowledging this anomaly is critical to avoid misplaced confidence in temporal walk-forward simulations.
 
 ---
@@ -339,7 +344,7 @@ In a truly randomized dataset, sequential expanding-window evaluation should not
 Comparing classical Decision Tree Gini impurity reduction against 500-sample test set TreeSHAP mean absolute attribution:
 
 | Rank | Predictive Feature | Decision Tree Gini Importance | Random Forest Mean \|SHAP\| | Primary Underwriting Interpretation |
-|:---:|---|:---:|:---:|---|
+| :---: | --- | :---: | :---: | --- |
 | 1 | `previous_loan_defaults_on_file` | **0.2952** (29.5%) | **0.2174** | Prior delinquency is the single most potent indicator of future default |
 | 2 | `loan_int_rate` | **0.1702** (17.0%) | **0.1017** | Higher interest rates reflect risk-tier pricing and compound debt burdens |
 | 3 | `loan_percent_income` | **0.1577** (15.8%) | **0.0926** | Debt burden metric ($r = 0.39$); defaults spike exponentially above 20% |
@@ -381,6 +386,7 @@ Credit Default Predictor/
 ### Step 1: Environment Setup
 
 ```bash
+git clone https://github.com/RaajitSingh1306/Credit-Default-Predictor.git
 cd "Credit Default Predictor"
 
 # Create Python virtual environment
@@ -432,7 +438,7 @@ streamlit run streamlit_app.py --server.port 8501
 ### Endpoints
 
 | Method | Endpoint | Description | Auth Required |
-|---|---|---|:---:|
+| --- | --- | --- | :---: |
 | `GET` | `/` | Service health status check | None |
 | `POST` | `/predict` | Scores loan application; returns probability and top 5 SHAP drivers | None |
 
@@ -515,9 +521,11 @@ docker run -p 8000:8000 credit-default-predictor
 
 ## 13. Connected Portfolio Projects
 
-- **[Finance KPI Pipeline](https://github.com/RaajitSingh1306/Finance_KPI)**: Automated portfolio analytics computing CAGR, annualized volatility, Sharpe ratio, and drawdown diagnostics for equity series.
+- **[Finance KPI Pipeline](https://github.com/RaajitSingh1306/Finance_Kpi)**: Automated portfolio analytics computing CAGR, annualized volatility, Sharpe ratio, and drawdown diagnostics for equity series.
 - **[Global Market HeatMap](https://github.com/RaajitSingh1306/Global-Equity-Market-Dashboard)**: Multi-asset cross-sectional risk and return monitoring platform across Indian and US equities.
 - **[Volatility Intelligence Platform](https://github.com/RaajitSingh1306/volatility-intelligence-platform)**: Econometric risk engine featuring GARCH(1,1) volatility forecasting and TreeSHAP macro explainability.
+- **[Smart Grid IDS](https://github.com/RaajitSingh1306/SmartGridIDS)**: Hybrid Isolation Forest + Random Forest intrusion detection engine using exact local TreeSHAP attributions.
+- **[ThreatMind](https://github.com/RaajitSingh1306/ThreatMind)**: Cybersecurity threat intelligence platform combining ensemble classification, TreeSHAP, and LangGraph RAG agents.
 
 ---
 
@@ -543,7 +551,9 @@ docker run -p 8000:8000 credit-default-predictor
 ## 16. License & Disclaimer
 
 ### License
+
 This project is licensed under the [MIT License](https://opensource.org/licenses/MIT).
 
 ### Disclaimer
+
 This software is intended strictly for educational, quantitative research, and portfolio demonstration purposes. It does not constitute formal financial underwriting advice or a certified credit rating system. Actual commercial lending deployment requires formal statutory compliance, fair lending audits, and certified human-in-the-loop underwriting review.

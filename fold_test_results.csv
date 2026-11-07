@@ -1,0 +1,9 @@
+dropped,rows,f1,f2,f3,f4,f5
+none,ordered,0.959,0.966,0.966,0.962,0.98
+none,shuffled,0.969,0.973,0.974,0.975,0.974
+previous_loan_defaults_on_file,ordered,0.872,0.904,0.895,0.899,0.942
+previous_loan_defaults_on_file,shuffled,0.906,0.921,0.929,0.924,0.924
+loan_int_rate,ordered,0.931,0.936,0.933,0.913,0.967
+loan_int_rate,shuffled,0.949,0.951,0.952,0.955,0.954
+both,ordered,0.778,0.812,0.799,0.816,0.905
+both,shuffled,0.847,0.859,0.865,0.87,0.869

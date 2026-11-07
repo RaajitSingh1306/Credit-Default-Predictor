@@ -8,7 +8,7 @@
 [![SHAP Explainability](https://img.shields.io/badge/Explainability-TreeSHAP%20Local%20%26%20Global-orange)](#85-global-feature-importance-tree-gini-vs-treeshap)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](#16-license--disclaimer)
 
-An end-to-end machine learning underwriting and credit risk assessment pipeline built on consumer lending data (`loan_data(best).csv`). The system features automated data hygiene and 99th-percentile income winsorization, empirical exploratory data analysis (EDA), multicollinearity resolution ($r = 0.95$ age/experience redundancy), depth-constrained Decision Tree benchmarking, class-balanced Random Forest modeling, a systematic **feature ablation & leakage stress-testing audit**, expanding-window sequential cross-validation noting a Fold 5 spike across all runs (cause untested), exact TreeSHAP feature attribution, a high-throughput **FastAPI REST backend**, and an interactive **Streamlit loan officer console**.
+An end-to-end machine learning underwriting and credit risk assessment pipeline built on consumer lending data (`loan_data(best).csv`). The system features automated data hygiene and 99th-percentile income winsorization, empirical exploratory data analysis (EDA), multicollinearity resolution ($r = 0.95$ age/experience redundancy), depth-constrained Decision Tree benchmarking, class-balanced Random Forest modeling, a systematic **feature ablation & leakage stress-testing audit**, expanding-window sequential cross-validation exposing a persistent row-order anomaly, exact TreeSHAP feature attribution, a high-throughput **FastAPI REST backend**, and an interactive **Streamlit loan officer console**.
 
 ---
 
@@ -215,7 +215,7 @@ flowchart TD
    $$W_c = \frac{N}{K \cdot N_c}$$
    boosting default class recall from 71% to 76% and achieving 0.975 ROC-AUC.
 7. **Feature Ablation & Leakage Stress-Testing**: Executed controlled ablation experiments sequentially dropping `previous_loan_defaults_on_file`, `loan_int_rate`, and both across Decision Tree and Random Forest architectures to evaluate signal concentration and establish a clean pre-pricing baseline.
-8. **Expanding-Window Cross-Validation & Anomaly Observation**: Validated sequence stability across 5 folds using `TimeSeriesSplit`, yielding a cross-validation score of $0.967 \pm 0.007$ and observing a row-order anomaly where Fold 5 outperforms all other folds across every single ablation run (underlying cause untested).
+8. **Expanding-Window Cross-Validation & Anomaly Diagnosis**: Validated sequence stability across 5 folds using `TimeSeriesSplit`, yielding a cross-validation score of $0.967 \pm 0.007$ and exposing a persistent row-order anomaly where Fold 5 outperforms all other folds across every single ablation run (cause unidentified).
 9. **SHAP Feature Importance & Local Attribution**: Configured `shap.TreeExplainer` to extract global mean absolute Shapley values and local per-applicant waterfall charts.
 10. **Serving & Dashboard Delivery**: Encapsulated the trained model into a high-performance REST API (`app.py`) and Streamlit lending officer console (`streamlit_app.py`).
 
@@ -227,7 +227,7 @@ flowchart TD
 | --- | --- | --- |
 | **Severe Class Imbalance** (22.2% defaults vs. 77.8% approved) | Naive classifiers predict all applicants as "Approved", scoring ~78% accuracy but missing 100% of defaults, causing catastrophic loan book write-offs | Integrated cost-sensitive weighting via `class_weight='balanced'` inside `RandomForestClassifier`. This penalizes false negatives proportionally ($W_{\text{default}} \approx 2.25$, $W_{\text{approved}} \approx 0.64$), lifting default recall to **76%** with **90% precision** |
 | **Dominant Signal & Pricing Leakage Vulnerability** | `loan_int_rate` and `previous_loan_defaults_on_file` dominate splits; in actual bank origination, interest rates are assigned *by* lenders (reverse causality) | Executed an explicit **Feature Ablation Stress-Test Matrix**. Dropping `loan_int_rate` alone gives the realistic pre-pricing figure of **0.953 ROC-AUC**, while dropping both columns as a stress test retains **0.870 ROC-AUC** driven by `loan_percent_income`, income (`person_income`), and renting (`person_home_ownership_RENT`) |
-| **Row-Order Anomaly (Fold 5 Peak Across All Runs)** | 5-fold `TimeSeriesSplit` revealed Fold 5 consistently peaked (up to 0.980 AUC) across every ablation run despite the absence of timestamps | Documented the Fold 5 peak transparently; no obvious sorting pattern was found in individual features, and the underlying cause remains untested |
+| **Row-Order Anomaly (Fold 5 Peak Across All Runs)** | 5-fold `TimeSeriesSplit` revealed Fold 5 consistently peaked (up to 0.980 AUC) across every ablation run, proving row sequence is not random despite lack of timestamps | Confirmed via shuffled-row `TimeSeriesSplit` that shuffling removes the Fold 5 spike (cause unidentified); documented the anomaly transparently and verified that while row order shouldn't matter, no overt pattern exists in individual features |
 | **Extreme Outlier Corruption** (Age 144, Experience 125 yrs) | Impossible demographic entries distort splits and create spurious tree decision branches | Evaluated domain bounds: dropped 10 impossible rows (age > 100, exp > 60). Capped extreme incomes at the 99th percentile ($271,269) via `.clip()`, controlling variance without discarding 454 valid records (which had a 12.78% default rate vs. 22.32% in the rest of the dataset) |
 | **High Multicollinearity** between Age and Experience ($r = 0.95$) | Including both features diluted tree split importance and inflated feature correlation matrices | Pruned `person_emp_exp` entirely, retaining `person_age` as the primary seniority indicator and reducing feature dimensionality to 18 clean inputs |
 | **Severe Overfitting in Unconstrained Trees** | An unpruned Decision Tree achieved 100% training accuracy but plummeted to 89.4% on the test set (10.6% generalization gap) | Constrained tree depth (`max_depth=4`), achieving matching 90.9% train and test accuracy; transitioned to Random Forest ensemble with bagging to capture non-linear patterns without variance inflation |
@@ -288,12 +288,12 @@ Actual: Default  (1)            567 (FN)            1,433 (TP)
 
 To determine how much predictive performance relies on dominant or potentially circular features, we executed a rigorous feature ablation experiment across both Decision Tree and Random Forest architectures, dropping `previous_loan_defaults_on_file`, `loan_int_rate`, and both simultaneously:
 
-| Dropped Column(s) | Decision Tree AUC | Random Forest AUC | Expanding-Window CV AUC (Row Order) | Random Forest Default Recall | Fold 5 AUC | Top 3 SHAP (`top3_shap`) |
-| --- | :---: | :---: | :---: | :---: | :---: | --- |
-| **None (Full Baseline)** | **0.943** | **0.975** | **0.967 ± 0.007** | **0.760** | **0.980** | `previous_loan_defaults_on_file`, `loan_int_rate`, `loan_percent_income` |
-| `previous_loan_defaults_on_file` | 0.864 | 0.927 | 0.902 ± 0.022 | 0.645 | 0.942 | `loan_int_rate`, `loan_percent_income`, `person_income` |
-| `loan_int_rate` | 0.919 | 0.953 | 0.936 ± 0.017 | 0.654 | 0.967 | `previous_loan_defaults_on_file`, `loan_percent_income`, `person_income` |
-| **Both (`defaults` + `int_rate`)** | **0.770** | **0.870** | **0.822 ± 0.044** | **0.497** | **0.905** | `loan_percent_income`, `person_income`, `person_home_ownership_RENT` |
+| Dropped Column(s) | Decision Tree AUC | Random Forest AUC | Expanding-Window CV AUC (Row Order) | Shuffled CV AUC (`TimeSeriesSplit`) | Random Forest Default Recall | Fold 5 AUC (Ordered / Shuffled) | Top 3 SHAP (`top3_shap`) |
+| --- | :---: | :---: | :---: | :---: | :---: | :---: | --- |
+| **None (Full Baseline)** | **0.943** | **0.975** | **0.967 ± 0.007** | **0.973 ± 0.002** | **0.760** | **0.980 / 0.974** | `previous_loan_defaults_on_file`, `loan_int_rate`, `loan_percent_income` |
+| `previous_loan_defaults_on_file` | 0.864 | 0.927 | 0.902 ± 0.022 | 0.921 ± 0.008 | 0.645 | 0.942 / 0.924 | `loan_int_rate`, `loan_percent_income`, `person_income` |
+| `loan_int_rate` | 0.919 | 0.953 | 0.936 ± 0.017 | 0.952 ± 0.002 | 0.654 | 0.967 / 0.954 | `previous_loan_defaults_on_file`, `loan_percent_income`, `person_income` |
+| **Both (`defaults` + `int_rate`)** | **0.770** | **0.870** | **0.822 ± 0.044** | **0.862 ± 0.008** | **0.497** | **0.905 / 0.869** | `loan_percent_income`, `person_income`, `person_home_ownership_RENT` |
 
 #### Key Empirical Takeaways from the Ablation Audit
 
@@ -325,16 +325,16 @@ To evaluate sequential stability and detect potential temporal leakage, a 5-fold
 
 In a truly randomized dataset, sequential expanding-window evaluation should not exhibit a deterministic peak on the final fold across every ablation run. In our experiments, **Fold 5 was consistently the highest-performing fold in every single run**:
 
-- **None dropped**: Fold 5 = **0.980** (vs. Folds 1–4 average: ~0.963)
-- **Drop `previous_loan_defaults_on_file`**: Fold 5 = **0.942** (vs. Folds 1–4 average: ~0.892)
-- **Drop `loan_int_rate`**: Fold 5 = **0.967** (vs. Folds 1–4 average: ~0.929)
-- **Drop both**: Fold 5 = **0.905** (vs. Folds 1–4 average: ~0.801)
+- **None dropped**: Ordered Fold 5 = **0.980** (vs. Folds 1–4 avg: ~0.963) | Shuffled Fold 5 = **0.974** (Fold 4 = 0.975)
+- **Drop `previous_loan_defaults_on_file`**: Ordered Fold 5 = **0.942** (vs. Folds 1–4 avg: ~0.892) | Shuffled Fold 5 = **0.924** (Fold 3 = 0.929)
+- **Drop `loan_int_rate`**: Ordered Fold 5 = **0.967** (vs. Folds 1–4 avg: ~0.929) | Shuffled Fold 5 = **0.954** (Fold 4 = 0.955)
+- **Drop both**: Ordered Fold 5 = **0.905** (vs. Folds 1–4 avg: ~0.801) | Shuffled Fold 5 = **0.869** (Fold 4 = 0.870)
 
 > [!WARNING]
 > **Why this is an Anomaly**:
-> In credit risk modeling, row order shouldn't matter when evaluating non-temporal tabular records, yet Fold 5 consistently scored highest across every ablation run.
+> In credit risk modeling, row order shouldn't matter when evaluating non-temporal tabular records. However, the persistent spike in Fold 5 (which disappears when rows are shuffled) proves that **row order in `loan_data(best).csv` is not random**.
 >
-> An inspection of individual attributes (age, income, credit score, loan amount, or intent) reveals **no obvious explicit sorting pattern** (e.g., the CSV is not ordered by income or score ascending/descending, and no date column exists), and the underlying cause of the Fold 5 peak remains untested. Acknowledging this observation is important to avoid treating row-order `TimeSeriesSplit` as a true temporal walk-forward backtest.
+> Interestingly, an inspection of individual attributes (age, income, credit score, loan amount, or intent) reveals **no obvious explicit sorting pattern** (e.g., the CSV is not ordered by income or score ascending/descending, and no date column exists); the underlying cause remains unidentified. Acknowledging this anomaly is critical to avoid misplaced confidence in temporal walk-forward simulations.
 
 ---
 
@@ -363,6 +363,7 @@ Comparing classical Decision Tree Gini impurity reduction against 500-sample tes
 Credit Default Predictor/
 ├── main.ipynb              # Complete analytical workflow: EDA, cleaning, DT, RF, CV, SHAP, and ablation
 ├── ablation_results.csv    # Exported feature ablation and SHAP driver summary table
+├── fold_test_results.csv   # Ordered vs. shuffled 5-fold TimeSeriesSplit comparison table
 ├── credit_core.py          # Standalone training and verification script
 ├── app.py                  # Production FastAPI REST inference service
 ├── streamlit_app.py        # Streamlit interactive loan officer interface
@@ -531,7 +532,7 @@ docker run -p 8000:8000 credit-default-predictor
 ## 14. Limitations & Known Issues
 
 - **Absence of Origination Timestamps**: `loan_data(best).csv` lacks explicit datetime attributes, preventing strict out-of-time (OOT) cohort partitioning and macroeconomic vintage tracking.
-- **Row-Order Sequence Anomaly (Fold 5 Peak Across All Runs)**: `TimeSeriesSplit` cross-validation revealed that Fold 5 was the highest-performing fold across every single ablation experiment (0.980, 0.942, 0.967, 0.905). Inspection of individual features reveals no overt sorting pattern, and the cause of this Fold 5 spike remains untested.
+- **Row-Order Sequence Anomaly (Fold 5 Peak Across All Runs)**: `TimeSeriesSplit` cross-validation revealed that Fold 5 was the highest-performing fold across every single ablation experiment (0.980, 0.942, 0.967, 0.905), and shuffling the rows eliminates the spike. While row order shouldn't matter in tabular credit scoring, this deterministic peak proves row order isn't random—even though inspection of individual features reveals no overt sorting pattern (cause unidentified).
 - **Signal Concentration & Pricing Leakage**: `previous_loan_defaults_on_file` and `loan_int_rate` carry over 10 points of ROC-AUC. Dropping both reduces Random Forest Default Recall from 0.76 to 0.50. Furthermore, interest rates in commercial lending are assigned *after* credit risk tiering, introducing reverse causality if used during pre-approval.
 - **Self-Reported Income Bias**: Relies on unverified self-reported `person_income` without automated payroll/tax bank verification APIs.
 - **Static Decision Thresholds**: Uses a standard 0.50 probability cutoff; production banking systems require dynamically tuned decision thresholds based on explicit loan loss provisions and funding costs.

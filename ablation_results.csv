@@ -1,0 +1,5 @@
+dropped,DT_AUC,RF_AUC,CV_AUC,RF_default_recall,fold5,top3_shap
+none,0.943,0.975,0.967,0.76,0.98,"previous_loan_defaults_on_file, loan_int_rate, loan_percent_income"
+previous_loan_defaults_on_file,0.864,0.927,0.902,0.645,0.942,"loan_int_rate, loan_percent_income, person_income"
+loan_int_rate,0.919,0.953,0.936,0.654,0.967,"previous_loan_defaults_on_file, loan_percent_income, person_income"
+both,0.77,0.87,0.822,0.497,0.905,"loan_percent_income, person_income, person_home_ownership_RENT"

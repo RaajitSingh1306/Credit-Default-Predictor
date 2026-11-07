@@ -288,10 +288,10 @@ Actual: Default  (1)            567 (FN)            1,433 (TP)
 
 To determine how much predictive performance relies on dominant or potentially circular features, we executed a rigorous feature ablation experiment across both Decision Tree and Random Forest architectures, dropping `previous_loan_defaults_on_file`, `loan_int_rate`, and both simultaneously:
 
-| Dropped Column(s) | Decision Tree AUC | Random Forest AUC | Expanding-Window CV AUC (Row Order) | Shuffled CV AUC (`TimeSeriesSplit`) | Random Forest Default Recall | Fold 5 AUC (Ordered / Shuffled) | Top 3 SHAP (`top3_shap`) |
+| Dropped Column(s) | Decision Tree AUC | Random Forest AUC | Expanding-Window CV AUC (Row Order, population std) | Shuffled CV AUC (`TimeSeriesSplit`, population std) | Random Forest Default Recall | Fold 5 AUC (Ordered / Shuffled) | Top 3 SHAP (`top3_shap`) |
 | --- | :---: | :---: | :---: | :---: | :---: | :---: | --- |
 | **None (Full Baseline)** | **0.943** | **0.975** | **0.967 ± 0.007** | **0.973 ± 0.002** | **0.760** | **0.980 / 0.974** | `previous_loan_defaults_on_file`, `loan_int_rate`, `loan_percent_income` |
-| `previous_loan_defaults_on_file` | 0.864 | 0.927 | 0.902 ± 0.022 | 0.921 ± 0.008 | 0.645 | 0.942 / 0.924 | `loan_int_rate`, `loan_percent_income`, `person_income` |
+| `previous_loan_defaults_on_file` | 0.864 | 0.927 | 0.902 ± 0.023 | 0.921 ± 0.008 | 0.645 | 0.942 / 0.924 | `loan_int_rate`, `loan_percent_income`, `person_income` |
 | `loan_int_rate` | 0.919 | 0.953 | 0.936 ± 0.017 | 0.952 ± 0.002 | 0.654 | 0.967 / 0.954 | `previous_loan_defaults_on_file`, `loan_percent_income`, `person_income` |
 | **Both (`defaults` + `int_rate`)** | **0.770** | **0.870** | **0.822 ± 0.044** | **0.862 ± 0.008** | **0.497** | **0.905 / 0.869** | `loan_percent_income`, `person_income`, `person_home_ownership_RENT` |
 
@@ -323,11 +323,11 @@ To evaluate sequential stability and detect potential temporal leakage, a 5-fold
 
 #### The Row-Order Anomaly (Fold 5 Peak Across All Runs)
 
-In a truly randomized dataset, sequential expanding-window evaluation should not exhibit a deterministic peak on the final fold across every ablation run. In our experiments, **Fold 5 was consistently the highest-performing fold in every single run**:
+In a truly randomized dataset, sequential expanding-window evaluation should not exhibit a deterministic peak on the final fold across every ablation run. In our experiments, **Fold 5 was consistently the highest-performing fold in every ordered run**:
 
 - **None dropped**: Ordered Fold 5 = **0.980** (vs. Folds 1–4 avg: ~0.963) | Shuffled Fold 5 = **0.974** (Fold 4 = 0.975)
 - **Drop `previous_loan_defaults_on_file`**: Ordered Fold 5 = **0.942** (vs. Folds 1–4 avg: ~0.892) | Shuffled Fold 5 = **0.924** (Fold 3 = 0.929)
-- **Drop `loan_int_rate`**: Ordered Fold 5 = **0.967** (vs. Folds 1–4 avg: ~0.929) | Shuffled Fold 5 = **0.954** (Fold 4 = 0.955)
+- **Drop `loan_int_rate`**: Ordered Fold 5 = **0.967** (vs. Folds 1–4 avg: ~0.928) | Shuffled Fold 5 = **0.954** (Fold 4 = 0.955)
 - **Drop both**: Ordered Fold 5 = **0.905** (vs. Folds 1–4 avg: ~0.801) | Shuffled Fold 5 = **0.869** (Fold 4 = 0.870)
 
 > [!WARNING]
